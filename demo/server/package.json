@@ -20,9 +20,14 @@
   },
   "dependencies": {
     "graphql": "16.15.0",
-    "graphql-yoga": "6.1.0"
+    "graphql-ws": "6.4.2",
+    "graphql-yoga": "6.1.0",
+    "ws": "8.23.0"
   },
   "files": [
     "dist"
-  ]
+  ],
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
+  }
 }

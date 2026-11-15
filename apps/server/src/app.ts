@@ -17,6 +17,7 @@ import { CoverageService } from './coverage-service.js';
 import { createMetrics, type Metrics } from './metrics.js';
 import { AnalysisPipeline, type PipelineHooks, type ProxyJob } from './pipeline.js';
 import { registerProxyRoutes } from './proxy.js';
+import { registerWsProxy } from './ws-proxy.js';
 import { RunManager } from './runs.js';
 import { SchemaRegistry } from './schema-registry.js';
 import { SqliteStorage } from './storage/sqlite.js';
@@ -100,13 +101,9 @@ export function createApp(config: Config, baseDir: string, options: AppOptions =
     keepAliveTimeout: 65_000,
   });
   proxy.get('/healthz', async () => ({ status: 'ok' }));
-  registerProxyRoutes(proxy, {
-    config,
-    pipeline,
-    metrics,
-    log,
-    beforeEnqueue: options.beforeEnqueue,
-  });
+  const proxyCtx = { config, pipeline, metrics, log, beforeEnqueue: options.beforeEnqueue };
+  registerProxyRoutes(proxy, proxyCtx);
+  registerWsProxy(proxy, proxyCtx);
 
   // --- admin: REST API, UI, metrics ------------------------------------------
   const admin = Fastify({

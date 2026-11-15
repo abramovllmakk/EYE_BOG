@@ -71,7 +71,10 @@ export interface Harness {
 
 export async function startHarness(
   overrides: Record<string, unknown> = {},
-  options: AppOptions & { demo?: { disableIntrospection?: boolean } } = {},
+  options: AppOptions & {
+    demo?: { disableIntrospection?: boolean };
+    extraTargets?: unknown[];
+  } = {},
 ): Promise<Harness> {
   const demo = await startDemoServer(0, options.demo);
   const demoUrl = `http://127.0.0.1:${portOf(demo)}/graphql`;
@@ -105,6 +108,7 @@ export async function startHarness(
           remove: ['x-drop-me'],
         },
       },
+      ...(options.extraTargets ?? []),
     ],
     ...overrides,
   });

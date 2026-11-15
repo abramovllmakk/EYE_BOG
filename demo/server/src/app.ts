@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
+import { WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/use/ws';
 import { GraphQLError } from 'graphql';
 import { createPubSub, createSchema, createYoga, filter, pipe, type Plugin } from 'graphql-yoga';
 
@@ -406,9 +408,42 @@ export function createDemoYoga(options: DemoOptions = {}) {
   });
 }
 
-/** Start the demo API on `port` (0 = random). Resolves with the http server. */
+/** Start the demo API on `port` (0 = random): HTTP/SSE via yoga and WebSocket (graphql-ws) on /graphql. */
 export function startDemoServer(port: number, options: DemoOptions = {}): Promise<Server> {
   const yoga = createDemoYoga(options);
   const server = createServer(yoga);
+  const wss = new WebSocketServer({ server, path: yoga.graphqlEndpoint });
+  useServer(
+    {
+      execute: (args) => (args.rootValue as EnvelopedRoot).execute(args),
+      subscribe: (args) => (args.rootValue as EnvelopedRoot).subscribe(args),
+      onSubscribe: async (ctx, _id, params) => {
+        const { schema, execute, subscribe, contextFactory, parse, validate } = yoga.getEnveloped({
+          ...ctx,
+          req: ctx.extra.request,
+          socket: ctx.extra.socket,
+          params,
+        });
+        const args = {
+          schema,
+          operationName: params.operationName,
+          document: parse(params.query),
+          variableValues: params.variables,
+          contextValue: await contextFactory(),
+          rootValue: { execute, subscribe },
+        };
+        const errors = validate(args.schema, args.document);
+        if (errors.length) return errors;
+        return args;
+      },
+    },
+    wss,
+  );
+  server.on('close', () => wss.close());
   return new Promise((resolve) => server.listen(port, '0.0.0.0', () => resolve(server)));
+}
+
+interface EnvelopedRoot {
+  execute: (args: unknown) => never;
+  subscribe: (args: unknown) => never;
 }
