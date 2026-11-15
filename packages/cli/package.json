@@ -1,0 +1,25 @@
+{
+  "name": "@gqlcov/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "gqlcov \u2014 CI helper for GraphQL Coverage Proxy.",
+  "bin": {
+    "gqlcov": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/cli.ts",
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/bin.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "files": [
+    "dist"
+  ]
+}

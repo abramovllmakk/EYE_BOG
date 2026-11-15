@@ -50,9 +50,6 @@ importers:
       '@gqlcov/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gqlcov/demo-server':
-        specifier: workspace:*
-        version: link:../../demo/server
       better-sqlite3:
         specifier: 13.2.0
         version: 13.2.0
@@ -87,6 +84,9 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@gqlcov/demo-server':
+        specifier: workspace:*
+        version: link:../../demo/server
       '@types/better-sqlite3':
         specifier: 9.6.0
         version: 9.6.0
@@ -151,6 +151,10 @@ importers:
       graphql-yoga:
         specifier: 6.1.0
         version: 6.1.0(graphql@16.15.0)(pino@10.4.0)
+
+  demo/traffic: {}
+
+  packages/cli: {}
 
   packages/core:
     devDependencies:
