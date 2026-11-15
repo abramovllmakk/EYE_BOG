@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
+import { GraphQLError } from 'graphql';
 import { createPubSub, createSchema, createYoga, filter, pipe, type Plugin } from 'graphql-yoga';
-import { GraphQLError, NoSchemaIntrospectionCustomRule } from 'graphql';
 
 type Role = 'ADMIN' | 'EDITOR' | 'AUTHOR' | 'READER';
 type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
@@ -385,8 +385,12 @@ export function createDemoYoga(options: DemoOptions = {}) {
   const plugins: Plugin[] = [];
   if (options.disableIntrospection) {
     plugins.push({
-      onValidate({ addValidationRule }) {
-        addValidationRule(NoSchemaIntrospectionCustomRule);
+      onParams({ params, setResult }) {
+        if (params.query && /\b__(schema|type)\b/.test(params.query)) {
+          setResult({
+            errors: [new GraphQLError('GraphQL introspection has been disabled on this server.')],
+          });
+        }
       },
     });
   }

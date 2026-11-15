@@ -28,7 +28,8 @@ export const isValidRunId = (id: string) => RUN_ID.test(id);
  * Resolves which run a request belongs to:
  *  1. explicit run id (X-Coverage-Run-Id header or /proxy/<runId>/graphql);
  *  2. the latest running run created via API/CLI for that target;
- *  3. an automatic run per metadata combination, closed after `idleTimeoutSec`.
+ *  3. an automatic run per metadata combination.
+ * Runs not created via API (header/path/auto) are finished after `idleTimeoutSec` of inactivity.
  */
 export class RunManager {
   private readonly cache = new Map<string, RunRow>();
@@ -75,7 +76,12 @@ export class RunManager {
       const existing = await this.storage.getRun(input.id);
       if (existing) return existing;
     }
-    return this.insert({ ...input, target, auto: false });
+    return this.insert({
+      ...input,
+      labels: { origin: 'api', ...input.labels },
+      target,
+      auto: false,
+    });
   }
 
   async finish(id: string): Promise<RunRow | null> {
@@ -94,7 +100,16 @@ export class RunManager {
         this.cache.set(existing.id, existing);
         return existing.id;
       }
-      return (await this.insert({ ...meta, id: meta.runId, target, auto: false })).id;
+      // Header / path runs are not "API-managed": they never capture plain requests and close on idle.
+      return (
+        await this.insert({
+          ...meta,
+          id: meta.runId,
+          target,
+          auto: true,
+          labels: { origin: 'header' },
+        })
+      ).id;
     }
     const explicit = await this.activeExplicit(target);
     if (explicit) return explicit.id;
@@ -110,7 +125,12 @@ export class RunManager {
     ]);
     const autoId = this.autoByKey.get(key);
     if (autoId && this.cache.has(autoId)) return autoId;
-    const run = await this.insert({ ...meta, target, auto: true, labels: { auto: 'true' } });
+    const run = await this.insert({
+      ...meta,
+      target,
+      auto: true,
+      labels: { origin: 'auto', auto: 'true' },
+    });
     this.autoByKey.set(key, run.id);
     return run.id;
   }
