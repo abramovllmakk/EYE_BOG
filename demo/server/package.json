@@ -1,0 +1,25 @@
+{
+  "name": "@gqlcov/demo-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Demo GraphQL API (graphql-yoga) used by docker-compose, tests and demos.",
+  "exports": {
+    ".": {
+      "source": "./src/app.ts",
+      "types": "./dist/app.d.ts",
+      "default": "./dist/app.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp src/schema.graphql dist/",
+    "start": "node dist/main.js",
+    "dev": "tsx --conditions=source src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'demo server: covered by apps/server integration tests'"
+  },
+  "dependencies": {
+    "graphql": "16.15.0",
+    "graphql-yoga": "6.1.0"
+  }
+}

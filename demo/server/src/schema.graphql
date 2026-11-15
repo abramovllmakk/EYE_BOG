@@ -1,0 +1,216 @@
+"""
+Demo API: a small publishing platform.
+Covers interfaces, unions, enums, nested input types, deep relations, mutations and subscriptions.
+"""
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+"Anything with a global id."
+interface Node {
+  id: ID!
+}
+
+"Publishable content: posts and videos."
+interface Content implements Node {
+  id: ID!
+  title: String!
+  author: User!
+  publishedAt: String
+  tags: [Tag!]!
+  likes: Int!
+}
+
+type User implements Node {
+  id: ID!
+  name: String!
+  email: String
+  role: Role!
+  bio: String
+  avatarUrl(size: Int = 64): String!
+  posts(first: Int = 10, status: PostStatus): [Post!]!
+  videos: [Video!]!
+  followers(first: Int = 10): [User!]!
+  following: [User!]!
+  stats: UserStats!
+}
+
+type UserStats {
+  postCount: Int!
+  followerCount: Int!
+  totalLikes: Int!
+}
+
+type Post implements Node & Content {
+  id: ID!
+  title: String!
+  body(format: TextFormat = MARKDOWN): String!
+  author: User!
+  publishedAt: String
+  status: PostStatus!
+  tags: [Tag!]!
+  likes: Int!
+  comments(first: Int = 10, order: SortOrder = NEWEST): CommentConnection!
+}
+
+type Video implements Node & Content {
+  id: ID!
+  title: String!
+  author: User!
+  publishedAt: String
+  tags: [Tag!]!
+  likes: Int!
+  durationSec: Int!
+  resolution: VideoResolution!
+}
+
+type Comment implements Node {
+  id: ID!
+  text: String!
+  author: User!
+  post: Post!
+  createdAt: String!
+  replies: [Comment!]!
+  parent: Comment
+}
+
+type CommentConnection {
+  totalCount: Int!
+  edges: [CommentEdge!]!
+  pageInfo: PageInfo!
+}
+
+type CommentEdge {
+  cursor: String!
+  node: Comment!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type Tag {
+  name: String!
+  posts: [Post!]!
+}
+
+union SearchResult = User | Post | Video | Tag
+
+enum Role {
+  ADMIN
+  EDITOR
+  AUTHOR
+  READER
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum TextFormat {
+  MARKDOWN
+  HTML
+  PLAIN
+}
+
+enum SortOrder {
+  NEWEST
+  OLDEST
+  TOP
+}
+
+enum VideoResolution {
+  SD
+  HD
+  UHD
+}
+
+enum SearchKind {
+  USER
+  POST
+  VIDEO
+  TAG
+}
+
+input PostFilter {
+  status: [PostStatus!]
+  authorId: ID
+  tags: [String!]
+  text: String
+  or: [PostFilter!]
+}
+
+input PostOrderInput {
+  field: PostOrderField!
+  direction: SortDirection = DESC
+}
+
+enum PostOrderField {
+  PUBLISHED_AT
+  LIKES
+  TITLE
+}
+
+enum SortDirection {
+  ASC
+  DESC
+}
+
+input CreatePostInput {
+  title: String!
+  body: String!
+  tags: [String!]
+  status: PostStatus = DRAFT
+  seo: SeoInput
+}
+
+input SeoInput {
+  title: String
+  description: String
+  keywords: [String!]
+}
+
+input UpdatePostInput {
+  title: String
+  body: String
+  status: PostStatus
+  tags: [String!]
+}
+
+input AddCommentInput {
+  postId: ID!
+  text: String!
+  parentId: ID
+}
+
+type Query {
+  viewer: User
+  user(id: ID!): User
+  users(role: Role, first: Int = 20): [User!]!
+  node(id: ID!): Node
+  post(id: ID!): Post
+  posts(filter: PostFilter, order: PostOrderInput, first: Int = 20): [Post!]!
+  feed(first: Int = 10): [Content!]!
+  search(text: String!, kinds: [SearchKind!]): [SearchResult!]!
+  tags: [Tag!]!
+}
+
+type Mutation {
+  createPost(input: CreatePostInput!): Post!
+  updatePost(id: ID!, input: UpdatePostInput!): Post!
+  deletePost(id: ID!): Boolean!
+  likePost(postId: ID!): Post!
+  addComment(input: AddCommentInput!): Comment!
+  updateRole(userId: ID!, role: Role!): User!
+  follow(userId: ID!): User!
+}
+
+type Subscription {
+  postAdded(status: PostStatus): Post!
+  commentAdded(postId: ID!): Comment!
+}
