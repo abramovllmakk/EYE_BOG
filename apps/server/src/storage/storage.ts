@@ -123,6 +123,8 @@ export interface DistinctValues {
 
 export interface Storage {
   readonly driver: 'sqlite' | 'postgres';
+  /** Run migrations / open connections. */
+  init(): Promise<void>;
   ping(): Promise<void>;
   close(): Promise<void>;
 

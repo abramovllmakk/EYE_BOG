@@ -8,4 +8,5 @@ export {
   type TargetConfig,
 } from './config.js';
 export { SqliteStorage } from './storage/sqlite.js';
+export { PgStorage } from './storage/pg.js';
 export type * from './storage/storage.js';

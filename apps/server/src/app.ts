@@ -20,6 +20,7 @@ import { registerProxyRoutes } from './proxy.js';
 import { registerWsProxy } from './ws-proxy.js';
 import { RunManager } from './runs.js';
 import { SchemaRegistry } from './schema-registry.js';
+import { PgStorage } from './storage/pg.js';
 import { SqliteStorage } from './storage/sqlite.js';
 import type { Storage } from './storage/storage.js';
 
@@ -56,11 +57,7 @@ export function createLogger(config: Config): Logger {
 }
 
 function createStorage(config: Config): Storage {
-  if (config.storage.driver === 'postgres') {
-    throw new Error(
-      'storage.driver=postgres is planned for stage 2 (schema is portable); use sqlite for now',
-    );
-  }
+  if (config.storage.driver === 'postgres') return new PgStorage(config.storage.url);
   return new SqliteStorage(config.storage.url);
 }
 
@@ -190,6 +187,7 @@ export function createApp(config: Config, baseDir: string, options: AppOptions =
     metrics,
     log,
     async init() {
+      await storage.init();
       await schemas.start();
       pipeline.start();
       runs.start();

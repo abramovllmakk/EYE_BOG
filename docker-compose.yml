@@ -15,6 +15,9 @@ services:
       GQLCOV_TARGETS__0__NAME: demo
       GQLCOV_LOGGING__LEVEL: info
       GQLCOV_QUEUE__FLUSH_INTERVAL_MS: '250'
+      # PostgreSQL instead of SQLite:
+      #   DATABASE_URL=postgres://gqlcov:gqlcov@postgres:5432/gqlcov docker compose --profile postgres up -d
+      DATABASE_URL: ${DATABASE_URL:-}
     volumes:
       - gqlcov-data:/data
     depends_on:
@@ -31,5 +34,14 @@ services:
     depends_on:
       gqlcov: { condition: service_healthy }
 
+  postgres:
+    image: postgres:17-alpine
+    profiles: [postgres]
+    environment: { POSTGRES_USER: gqlcov, POSTGRES_PASSWORD: gqlcov, POSTGRES_DB: gqlcov }
+    ports: ['5432:5432']
+    volumes:
+      - gqlcov-pg:/var/lib/postgresql/data
+
 volumes:
   gqlcov-data:
+  gqlcov-pg:
