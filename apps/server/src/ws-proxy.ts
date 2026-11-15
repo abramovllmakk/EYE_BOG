@@ -64,9 +64,12 @@ export function registerWsProxy(app: FastifyInstance, ctx: ProxyContext): void {
       .split(',')
       .map((p) => p.trim())
       .filter(Boolean);
-    const headers = upstreamHeaders(ctx.config, r.target, req.headers);
-    for (const k of Object.keys(headers))
-      if (k.startsWith('sec-websocket-') || k === 'host') delete headers[k];
+    // ws negotiates its own handshake headers and Host.
+    const headers = Object.fromEntries(
+      Object.entries(upstreamHeaders(ctx.config, r.target, req.headers)).filter(
+        ([k]) => !k.startsWith('sec-websocket-') && k !== 'host',
+      ),
+    );
 
     const upstream = new WebSocket(toWsUrl(r.target.url, search), protocols, {
       headers: headers as Record<string, string>,
