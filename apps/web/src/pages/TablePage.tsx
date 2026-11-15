@@ -36,6 +36,7 @@ interface FieldRow {
   tests: number;
   maxDepth: number | null;
   args: string;
+  services: string;
 }
 
 const col = createColumnHelper<FieldRow>();
@@ -89,6 +90,7 @@ export function TablePage() {
   const [kind, setKind] = useParam('kind');
   const [search, setSearch] = useParam('q');
   const [suite, setSuite] = useParam('suite');
+  const [service, setService] = useParam('service');
   const link = useRunLink();
   const groups = useQuery({
     queryKey: ['groups', run],
@@ -121,6 +123,7 @@ export function TablePage() {
           tests: f.tests,
           maxDepth: f.maxDepth,
           args: f.args.map((a) => `${a.used ? '●' : '○'} ${a.name}`).join('  '),
+          services: f.services.join(', '),
         });
       }
     }
@@ -142,7 +145,7 @@ export function TablePage() {
         .slice(0, 25);
     if (view === 'never') r = r.filter((x) => x.status !== 'covered');
     return r;
-  }, [rows, search, status, kind, view]);
+  }, [rows, search, status, kind, view, service]);
 
   const columns = useMemo(
     () => [
@@ -250,6 +253,14 @@ export function TablePage() {
           onChange={setSuite}
           options={(groups.data ?? []).map((g) => g.suite)}
         />
+        {cov.data.summary.services.length > 0 && (
+          <Select
+            label="Сервис"
+            value={service}
+            onChange={setService}
+            options={cov.data.summary.services.map((x) => x.service)}
+          />
+        )}
       </div>
       {filtered.length === 0 ? (
         <Empty title={view === 'never' ? 'Непокрытых полей нет' : 'Ничего не найдено'}>

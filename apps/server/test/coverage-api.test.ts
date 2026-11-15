@@ -409,3 +409,38 @@ describe('schemas', () => {
     expect((await h.api('GET', '/api/runs/nope/summary')).status).toBe(404);
   });
 });
+
+describe('federation supergraph', () => {
+  it('keeps @join__ ownership through storage and reports coverage per subgraph', async () => {
+    const { readFileSync } = await import('node:fs');
+    const sdl = readFileSync(
+      new URL('../../../packages/core/test/fixtures/supergraph.graphql', import.meta.url),
+      'utf8',
+    );
+    const up = await h.api<{ snapshotId: number }>('POST', '/api/schemas', { target: 'echo', sdl });
+    expect(up.status).toBe(200);
+    // Reload from storage (not the in-memory object) to prove the directives survive.
+    const snap = await h.api<{ model: { services: string[] } }>(
+      'GET',
+      `/api/schemas/${up.json.snapshotId}`,
+    );
+    expect(snap.json.model.services).toEqual(['accounts', 'legacy', 'products', 'reviews']);
+    await h.gql(
+      { query: '{ me { id name } topProducts { upc } }' },
+      { 'x-coverage-run-id': 'fed' },
+      '/t/echo/graphql',
+    );
+    await h.app.pipeline.idle();
+    const s = await h.api<{
+      summary: { services: { service: string; fields: { covered: number; total: number } }[] };
+    }>('GET', '/api/runs/fed/summary');
+    expect(s.json.summary.services.find((x) => x.service === 'accounts')!.fields).toMatchObject({
+      covered: 3,
+      total: 3,
+    });
+    expect(s.json.summary.services.find((x) => x.service === 'products')!.fields).toMatchObject({
+      covered: 2,
+      total: 4,
+    });
+  });
+});

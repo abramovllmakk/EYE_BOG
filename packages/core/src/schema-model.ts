@@ -8,6 +8,8 @@ import {
   isUnionType,
   lexicographicSortSchema,
   printSchema,
+  valueFromASTUntyped,
+  type ConstDirectiveNode,
   type GraphQLArgument,
   type GraphQLNamedType,
   type GraphQLSchema,
@@ -32,6 +34,8 @@ export interface FieldModel {
   namedTypeKind: TypeKind;
   args: ArgModel[];
   deprecated: boolean;
+  /** Federation: subgraph services that resolve this field (empty for non-federated schemas). */
+  services: string[];
 }
 
 export interface InputFieldModel {
@@ -54,6 +58,8 @@ export interface TypeModel {
   enumValues: string[];
   inputFields: InputFieldModel[];
   builtIn: boolean;
+  /** Federation: subgraphs that define this type (`@join__type`). */
+  services: string[];
 }
 
 export type EdgeKind = 'field' | 'implements' | 'member';
@@ -70,6 +76,8 @@ export interface EdgeModel {
 
 export interface SchemaModel {
   roots: { query: string | null; mutation: string | null; subscription: string | null };
+  /** Federation subgraph names found in a supergraph SDL (`join__Graph`), otherwise empty. */
+  services: string[];
   types: TypeModel[];
   edges: EdgeModel[];
 }
@@ -97,12 +105,53 @@ const argModel = (parent: string, field: string, a: GraphQLArgument): ArgModel =
   namedType: getNamedType(a.type).name,
 });
 
+/** Federation supergraph internals that are not part of the public API. */
+const isFederationInternal = (name: string) =>
+  name.startsWith('join__') || name.startsWith('link__');
+
+type DirectiveHost = {
+  astNode?: { directives?: readonly ConstDirectiveNode[] } | null | undefined;
+};
+
+/** Directive arguments of a parsed SDL node (the parser always sets `arguments`). */
+function directiveArgs(host: DirectiveHost, name: string): Record<string, unknown>[] {
+  return (host.astNode?.directives ?? [])
+    .filter((d) => d.name.value === name)
+    .map((d) =>
+      Object.fromEntries(d.arguments!.map((a) => [a.name.value, valueFromASTUntyped(a.value)])),
+    );
+}
+
+/** Map `join__Graph` enum values to subgraph names (`@join__graph(name:)`). */
+function federationGraphs(schema: GraphQLSchema): Map<string, string> {
+  const graphs = new Map<string, string>();
+  const t = schema.getType('join__Graph');
+  if (!t || !isEnumType(t)) return graphs;
+  for (const v of t.getValues()) {
+    const name = directiveArgs(v, 'join__graph')[0]?.name;
+    graphs.set(v.name, typeof name === 'string' ? name : v.name.toLowerCase());
+  }
+  return graphs;
+}
+
 export function buildSchemaModel(schema: GraphQLSchema): SchemaModel {
   const types: TypeModel[] = [];
   const edges: EdgeModel[] = [];
   const typeMap = schema.getTypeMap();
+  const graphs = federationGraphs(schema);
+  const graphName = (v: unknown) =>
+    typeof v === 'string' ? (graphs.get(v) ?? v.toLowerCase()) : null;
+  const owners = (host: DirectiveHost, directive: string, skipExternal = false): string[] =>
+    [
+      ...new Set(
+        directiveArgs(host, directive)
+          .filter((a) => !(skipExternal && a.external === true))
+          .map((a) => graphName(a.graph))
+          .filter((x): x is string => !!x),
+      ),
+    ].sort();
   const names = Object.keys(typeMap)
-    .filter((n) => !n.startsWith('__'))
+    .filter((n) => !n.startsWith('__') && !(graphs.size > 0 && isFederationInternal(n)))
     .sort();
 
   for (const name of names) {
@@ -118,6 +167,7 @@ export function buildSchemaModel(schema: GraphQLSchema): SchemaModel {
       enumValues: [],
       inputFields: [],
       builtIn: isScalarType(t) && BUILT_IN_SCALARS.has(name),
+      services: graphs.size ? owners(t, 'join__type') : [],
     };
     if (isObjectType(t) || isInterfaceType(t)) {
       for (const f of Object.values(t.getFields())) {
@@ -130,6 +180,11 @@ export function buildSchemaModel(schema: GraphQLSchema): SchemaModel {
           namedTypeKind: kindOf(named),
           args: f.args.map((a) => argModel(name, f.name, a)),
           deprecated: f.deprecationReason != null,
+          services: graphs.size
+            ? directiveArgs(f, 'join__field').length > 0
+              ? owners(f, 'join__field', true)
+              : model.services
+            : [],
         });
         edges.push({
           id: `${name}.${f.name}`,
@@ -178,6 +233,7 @@ export function buildSchemaModel(schema: GraphQLSchema): SchemaModel {
   }
 
   return {
+    services: [...new Set(graphs.values())].sort(),
     roots: {
       query: schema.getQueryType()?.name ?? null,
       mutation: schema.getMutationType()?.name ?? null,

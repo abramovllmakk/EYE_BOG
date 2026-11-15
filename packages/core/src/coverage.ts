@@ -285,6 +285,8 @@ export interface FieldCoverage {
   /** Interfaces whose field covers this one (status via_interface). */
   viaInterfaces: string[];
   args: ArgCoverage[];
+  /** Federation: owning subgraphs. */
+  services: string[];
 }
 
 export interface ValueCoverage {
@@ -319,6 +321,8 @@ export interface CoverageSummary {
   maxDepth: number;
   /** Distinct covered field coordinates whose min depth equals `depth`. */
   depth: { depth: number; fields: number }[];
+  /** Federation: field coverage per owning subgraph (empty for non-federated schemas). */
+  services: { service: string; fields: Ratio }[];
 }
 
 export interface CoverageReport {
@@ -378,6 +382,7 @@ export function computeCoverage(
   const roots = model.roots;
   const opRatios = { query: ratio(0, 0), mutation: ratio(0, 0), subscription: ratio(0, 0) };
   const depth = new Map<number, number>();
+  const perService = new Map<string, { covered: number; total: number }>();
 
   for (const t of model.types) {
     if (t.kind === 'SCALAR') continue;
@@ -426,6 +431,12 @@ export function computeCoverage(
         fieldsTotal += 1;
         if (counted) fieldsCovered += 1;
         else uncovered.fields.push(f.coordinate);
+        for (const svc of f.services) {
+          const cur = perService.get(svc) ?? { covered: 0, total: 0 };
+          cur.total += 1;
+          if (counted) cur.covered += 1;
+          perService.set(svc, cur);
+        }
         if (hit) {
           requests = Math.max(requests, hit.requests);
           depth.set(hit.minDepth, (depth.get(hit.minDepth) ?? 0) + 1);
@@ -458,6 +469,7 @@ export function computeCoverage(
           conditionalOnly: hit?.conditionalOnly ?? false,
           viaInterfaces,
           args,
+          services: f.services,
         });
       }
       r = ratio(fields.filter((f) => f.counted).length, fields.length);
@@ -537,6 +549,12 @@ export function computeCoverage(
       tests: Object.keys(data.tests).length,
       maxDepth: Object.values(data.fields).reduce((m, f) => Math.max(m, f.maxDepth), 0),
       depth: depths.map((d) => ({ depth: d, fields: depth.get(d)! })),
+      services: [...perService.keys()]
+        .sort()
+        .map((service) => ({
+          service,
+          fields: ratio(perService.get(service)!.covered, perService.get(service)!.total),
+        })),
     },
     types,
     uncovered: {

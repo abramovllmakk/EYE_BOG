@@ -154,13 +154,23 @@ export class SchemaRegistry {
     target: string,
     schema: GraphQLSchema,
     source: string,
+    rawSdl?: string,
   ): Promise<LoadedSchema> {
-    const sdl = normalizeSdl(schema);
-    const hash = sha256(sdl);
+    const normalized = normalizeSdl(schema);
+    // printSchema drops applied directives; a federation supergraph needs its @join__* directives,
+    // so its raw SDL is stored and the ownership map is part of the version hash.
+    const model = buildSchemaModel(schema);
+    const ownership = model.services.length
+      ? JSON.stringify(
+          model.types.map((t) => [t.name, t.services, t.fields.map((f) => [f.name, f.services])]),
+        )
+      : '';
+    const hash = sha256(normalized + ownership);
+    const sdl = ownership && rawSdl ? rawSdl : normalized;
     const prev = this.current.get(target);
     if (prev?.hash === hash) return prev;
     const row = await this.storage.saveSnapshot({ target, hash, sdl, source });
-    // Re-build from normalized SDL so the in-memory schema matches what is stored.
+    // Re-build from the stored SDL so the in-memory schema matches what is persisted.
     const loaded = this.remember(row, buildSchema(sdl));
     this.current.set(target, loaded);
     this.errors.delete(target);
@@ -177,7 +187,7 @@ export class SchemaRegistry {
     try {
       if (t.schema.source === 'sdl') {
         const sdl = await readFile(resolve(this.baseDir, t.schema.file!), 'utf8');
-        return await this.activate(target, parseSdl(sdl), 'file');
+        return await this.activate(target, parseSdl(sdl), 'file', sdl);
       }
       return await this.activate(target, await introspect(t), 'introspection');
     } catch (e) {
@@ -189,7 +199,7 @@ export class SchemaRegistry {
 
   async upload(target: string, sdl: string): Promise<LoadedSchema> {
     this.targetConfig(target);
-    return this.activate(target, parseSdl(sdl), 'upload');
+    return this.activate(target, parseSdl(sdl), 'upload', sdl);
   }
 
   /**
