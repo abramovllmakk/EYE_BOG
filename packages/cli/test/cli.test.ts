@@ -47,6 +47,10 @@ beforeAll(async () => {
         res.writeHead(code, { 'content-type': 'application/json' });
         res.end(JSON.stringify(x));
       };
+      if (req.url === '/api/runs?branch=main&status=finished&limit=5')
+        return json(200, { items: [{ id: 'r1' }, { id: 'r0' }] });
+      if (req.url === '/api/runs?branch=none&status=finished&limit=5')
+        return json(200, { items: [] });
       if (req.url === '/api/runs' && req.method === 'POST')
         return json(201, { id: JSON.parse(body).id ?? 'new-run' });
       if (req.url?.endsWith('/finish')) return json(200, {});
@@ -143,6 +147,15 @@ describe('gqlcov', () => {
     ).toBe(61);
     expect((await run(['report', 'r1', '--format', 'xml'])).code).toBe(2);
     expect((await run(['report'])).code).toBe(2);
+  });
+
+  it('compares with the latest finished run of a branch', async () => {
+    const md = await run(['report', 'r1', '--compare-branch', 'main']);
+    expect(seen.at(-1)!.url).toBe('/api/compare?base=r0&head=r1');
+    expect(md.out).toContain('Δ p.p.');
+    const none = await run(['report', 'r1', '--compare-branch', 'none']);
+    expect(none.err).toContain('no finished run on branch none');
+    expect(none.out).not.toContain('Δ p.p.');
   });
 
   it('reports API errors and unreachable servers', async () => {

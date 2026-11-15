@@ -62,7 +62,8 @@ Usage:
         Starts a run and prints its id (use: export GQLCOV_RUN_ID=$(gqlcov run start ...)).
   gqlcov run finish <runId> [--min-field-coverage P] [--min-operation-coverage P]
         Finishes the run, prints the summary; exit code 3 if coverage is below a threshold.
-  gqlcov report <runId> [--format json|csv|markdown] [--compare BASE_RUN_ID]
+  gqlcov report <runId> [--format json|csv|markdown] [--compare BASE_RUN_ID | --compare-branch BRANCH]
+        --compare-branch picks the latest finished run of BRANCH as the base (e.g. main).
   gqlcov schema upload <file.graphql> [--target NAME]
 
 Options:
@@ -207,6 +208,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         id: { type: 'string' },
         format: { type: 'string', default: 'markdown' },
         compare: { type: 'string' },
+        'compare-branch': { type: 'string' },
         'min-field-coverage': { type: 'string' },
         'min-operation-coverage': { type: 'string' },
         help: { type: 'boolean', short: 'h' },
@@ -284,10 +286,20 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
       }
       if (o.format !== 'markdown') throw new CliError('--format must be json, csv or markdown', 2);
       const s = await call<SummaryResponse>('GET', `/api/runs/${id}/summary`);
-      const cmp = o.compare
+      let base = o.compare;
+      if (!base && o['compare-branch']) {
+        const runs = await call<{ items: { id: string }[] }>(
+          'GET',
+          `/api/runs?branch=${encodeURIComponent(o['compare-branch'])}&status=finished&limit=5`,
+        );
+        base = runs.items.find((r) => r.id !== runId)?.id;
+        if (!base)
+          io.err(`no finished run on branch ${o['compare-branch']}; reporting without diff`);
+      }
+      const cmp = base
         ? await call<CompareResponse>(
             'GET',
-            `/api/compare?base=${encodeURIComponent(o.compare)}&head=${id}`,
+            `/api/compare?base=${encodeURIComponent(base)}&head=${id}`,
           )
         : undefined;
       io.out(markdownReport(s, cmp));
