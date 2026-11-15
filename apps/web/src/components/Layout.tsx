@@ -15,28 +15,20 @@ const NAV = [
   { to: '/timeline', label: 'Динамика', needsRun: false },
 ];
 
+/** Dark on every visit; the button flips to light for the current page session only. */
 function ThemeToggle() {
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? '');
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   useEffect(() => {
-    if (theme) document.documentElement.dataset.theme = theme;
-    else delete document.documentElement.dataset.theme;
-    try {
-      if (theme) localStorage.setItem('gqlcov-theme', theme);
-      else localStorage.removeItem('gqlcov-theme');
-    } catch {
-      /* ignore */
-    }
+    document.documentElement.dataset.theme = theme;
   }, [theme]);
-  const next = theme === '' ? 'dark' : theme === 'dark' ? 'light' : '';
-  const label = theme === 'dark' ? 'Тёмная' : theme === 'light' ? 'Светлая' : 'Системная';
   return (
     <button
       type="button"
-      onClick={() => setTheme(next)}
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
       className="h-8 rounded-md border border-line px-2.5 text-sm hover:bg-surface-2"
-      title="Переключить тему"
+      title={theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему'}
     >
-      Тема: {label}
+      {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
     </button>
   );
 }
