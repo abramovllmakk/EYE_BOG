@@ -59,7 +59,7 @@ describe('coverage through the proxy', () => {
       requests: { total: number; valid: number; invalid: number; introspection: number };
     }>('GET', '/api/runs/cov-1');
     expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ id: 'cov-1', branch: 'feature/x', environment: 'stage' });
+    expect(r.json).toMatchObject({ id: 'cov-1', branch: 'feature/x', environment: 'stage', testSuite: null });
     expect(r.json.requests).toMatchObject({ total: 7, valid: 6, invalid: 1, introspection: 1 });
   });
 

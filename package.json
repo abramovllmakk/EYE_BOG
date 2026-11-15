@@ -7,10 +7,10 @@
     "node": ">=22.12 <23"
   },
   "scripts": {
-    "build": "pnpm -r --filter ./packages/** --filter ./apps/** --filter ./demo/** run build",
+    "build": "pnpm -r run build",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
-    "typecheck": "pnpm -r run typecheck",
+    "typecheck": "pnpm -r run typecheck && tsc -p e2e",
     "test": "pnpm -r run test",
     "test:e2e": "vitest run --config e2e/vitest.config.ts",
     "test:ui": "playwright test --config e2e/playwright.config.ts",
@@ -18,8 +18,10 @@
     "ci": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "@types/node": "^22.20.5",
     "@vitest/coverage-v8": "5.1.0",
+    "autocannon": "9.0.0",
     "eslint": "10.15.0",
     "prettier": "3.10.1",
     "tsx": "4.23.15",

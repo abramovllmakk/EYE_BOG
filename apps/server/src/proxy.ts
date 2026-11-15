@@ -46,7 +46,7 @@ export function extractMeta(config: Config, h: IncomingHttpHeaders, pathRunId?: 
     build: header(h, n.build),
     commit: header(h, n.commit),
     team: header(h, n.team),
-    testSuite: header(h, n.testSuite),
+    // X-Test-Suite describes a single test, not the run: it is stored per operation/test only.
   };
 }
 

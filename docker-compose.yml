@@ -1,0 +1,35 @@
+# Quick start:  docker compose up -d --build   then   docker compose run --rm traffic
+# UI: http://localhost:4001   proxy for tests: http://localhost:4000/graphql   demo API: http://localhost:4100/graphql
+name: gqlcov
+
+services:
+  demo-api:
+    build: { context: ., target: demo }
+    ports: ['4100:4100']
+
+  gqlcov:
+    build: { context: ., target: server }
+    ports: ['4000:4000', '4001:4001']
+    environment:
+      TARGET_URL: http://demo-api:4100/graphql
+      GQLCOV_TARGETS__0__NAME: demo
+      GQLCOV_LOGGING__LEVEL: info
+      GQLCOV_QUEUE__FLUSH_INTERVAL_MS: '250'
+    volumes:
+      - gqlcov-data:/data
+    depends_on:
+      demo-api: { condition: service_healthy }
+
+  traffic:
+    build: { context: ., target: traffic }
+    profiles: [demo]
+    environment:
+      PROXY_URL: http://gqlcov:4000/graphql
+      RUN_ID: ${RUN_ID:-}
+      BRANCH: ${BRANCH:-main}
+      ENVIRONMENT: ${ENVIRONMENT:-docker}
+    depends_on:
+      gqlcov: { condition: service_healthy }
+
+volumes:
+  gqlcov-data:

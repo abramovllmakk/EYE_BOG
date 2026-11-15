@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import { LRUCache } from 'lru-cache';
 import type { Logger } from 'pino';
 import {
@@ -62,6 +63,8 @@ export interface PipelineHooks {
 }
 
 const APQ_PENDING_MAX = 1000;
+const SLICE_MS = 2;
+const WRITE_SLICE = 100;
 const APQ_PENDING_TTL_MS = 10 * 60_000;
 
 export class AnalysisPipeline {
@@ -142,7 +145,13 @@ export class AnalysisPipeline {
       while (this.queue.length > 0) {
         const batch = this.queue.splice(0, this.config.queue.batchSize);
         this.metrics.queueLength.set(this.queue.length);
+        let sliceStart = performance.now();
         for (const job of batch) {
+          // Time-slice: never hold the event loop for more than ~4 ms at a time.
+          if (performance.now() - sliceStart > SLICE_MS) {
+            await new Promise((r) => setImmediate(r));
+            sliceStart = performance.now();
+          }
           try {
             await this.process(job);
           } catch (e) {
@@ -393,6 +402,27 @@ export class AnalysisPipeline {
     return this.flushNow();
   }
 
+  /**
+   * SQLite writes are synchronous: split large batches into small transactions and yield between
+   * them so a flush never stalls in-flight proxy requests. Coverage goes with the last slice.
+   */
+  private async writeInSlices(batch: WriteBatch): Promise<number[]> {
+    const ids: number[] = [];
+    const logs = batch.logs;
+    for (let i = 0; i < logs.length || i === 0; i += WRITE_SLICE) {
+      const last = i + WRITE_SLICE >= logs.length;
+      const { logIds } = await this.storage.write({
+        documents: i === 0 ? batch.documents : [],
+        logs: logs.slice(i, i + WRITE_SLICE),
+        logUpdates: i === 0 ? batch.logUpdates : [],
+        coverage: last ? batch.coverage : new Map(),
+      });
+      ids.push(...logIds);
+      if (!last) await new Promise((r) => setImmediate(r));
+    }
+    return ids;
+  }
+
   private flushNow(): Promise<void> {
     if (
       !this.logs.length &&
@@ -418,9 +448,8 @@ export class AnalysisPipeline {
     }
     this.accumulators.clear();
     const end = this.metrics.flushDuration.startTimer();
-    this.flushing = this.storage
-      .write(batch)
-      .then(({ logIds }) => {
+    this.flushing = this.writeInSlices(batch)
+      .then((logIds) => {
         logIds.forEach((id, i) => (logs[i]!.id = id));
         for (const runId of batch.coverage.keys())
           this.versions.set(runId, (this.versions.get(runId) ?? 0) + 1);
