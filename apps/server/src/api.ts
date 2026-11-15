@@ -666,6 +666,58 @@ export function registerApi(root: FastifyInstance, ctx: ApiContext): void {
   );
 
   app.get(
+    '/api/teams',
+    {
+      schema: {
+        tags: ['coverage'],
+        summary: 'Coverage per team: union of all its runs (per target) within the filters',
+        querystring: z.object({
+          target: str,
+          environment: str,
+          branch: str,
+          from: dateParam,
+          to: dateParam,
+        }),
+      },
+    },
+    async (req) => {
+      const q = req.query;
+      const { items } = await storage.listRuns({ ...q, limit: 500 });
+      const groups = new Map<string, RunRow[]>();
+      for (const r of items) {
+        const key = JSON.stringify([r.team, r.target]);
+        (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);
+      }
+      const out = [];
+      for (const runs of groups.values()) {
+        const agg = await coverage.aggregate(runs);
+        if (!agg) continue;
+        const s = agg.report.summary;
+        out.push({
+          team: runs[0]!.team,
+          target: runs[0]!.target,
+          runs: runs.length,
+          lastRunAt: Math.max(...runs.map((r) => r.startedAt)),
+          requests: s.requests.total,
+          tests: s.tests,
+          summary: compact(s),
+          uncovered: {
+            fields: agg.report.uncovered.fields.length,
+            operations: agg.report.uncovered.operations,
+          },
+        });
+      }
+      // Named teams first (alphabetically), runs without a team last.
+      return out.sort(
+        (a, b) =>
+          (a.team === null ? 1 : 0) - (b.team === null ? 1 : 0) ||
+          String(a.team).localeCompare(String(b.team)) ||
+          a.target.localeCompare(b.target),
+      );
+    },
+  );
+
+  app.get(
     '/api/timeline',
     {
       schema: {

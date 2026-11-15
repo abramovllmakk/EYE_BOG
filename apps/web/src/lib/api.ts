@@ -182,3 +182,14 @@ export const qs = (params: Record<string, string | number | undefined | null>) =
   const s = p.toString();
   return s ? `?${s}` : '';
 };
+
+export interface TeamCoverage {
+  team: string | null;
+  target: string;
+  runs: number;
+  lastRunAt: number;
+  requests: number;
+  tests: number;
+  summary: CompactSummary;
+  uncovered: { fields: number; operations: string[] };
+}

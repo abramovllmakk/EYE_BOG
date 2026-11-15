@@ -143,6 +143,10 @@ export const unionMemberHit = pgTable('union_member_hit', { ...hitColumns() }, (
   primaryKey({ columns: [t.runId, t.coordinate] }),
 ]);
 
+export const typeHit = pgTable('type_hit', { ...hitColumns() }, (t) => [
+  primaryKey({ columns: [t.runId, t.coordinate] }),
+]);
+
 export const runTest = pgTable(
   'run_test',
   {

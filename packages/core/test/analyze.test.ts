@@ -85,6 +85,23 @@ describe('analyzer result shape', () => {
     ]);
   });
 
+  it('lists the types a request used (fields, enums, inputs, unions)', () => {
+    const r = analyzeRequest(schema, {
+      query:
+        'query($f: PostFilter) { me { id name } posts(filter: $f) { id } search(text: "q") { ... on Video { id } } }',
+      variables: { f: { status: ['DRAFT'] } },
+    });
+    expect(r.types).toEqual([
+      { coordinate: 'Post', occurrences: 1 },
+      { coordinate: 'PostFilter', occurrences: 1 },
+      { coordinate: 'PostStatus', occurrences: 1 },
+      { coordinate: 'Query', occurrences: 3 },
+      { coordinate: 'SearchResult', occurrences: 1 },
+      { coordinate: 'User', occurrences: 2 },
+      { coordinate: 'Video', occurrences: 1 },
+    ]);
+  });
+
   it('records the composite edge target and depth range of each field', () => {
     const r = analyzeRequest(schema, { query: `{ me { name bestFriend { name } } }` });
     const name = r.fields.find((f) => f.coordinate === 'User.name')!;

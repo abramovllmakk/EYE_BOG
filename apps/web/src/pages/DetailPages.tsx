@@ -49,6 +49,10 @@ export function TypePage() {
             </span>
           </div>
           <Bar value={type.ratio.percent} className="mt-1" />
+          <p className="mt-2 text-muted">
+            Использовался в <span className="tabular-nums text-ink">{type.requests}</span> запросах
+            {type.occurrences > 0 && <> ({type.occurrences} обращений к полям)</>}.
+          </p>
         </div>
       )}
       {model.interfaces.length > 0 && (

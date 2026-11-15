@@ -1,18 +1,52 @@
 {
   "$comment": "Hand-computed expected coverage of demo/traffic against demo/server/src/schema.graphql (default options: interface coverage not propagated). See docs/decisions.md for the derivation.",
-  "requests": { "total": 20, "valid": 19, "invalid": 1, "introspection": 1, "unresolved": 0 },
-  "tests": 18,
-  "fields": { "covered": 61, "total": 72 },
-  "operations": {
-    "query": { "covered": 9, "total": 9 },
-    "mutation": { "covered": 4, "total": 7 },
-    "subscription": { "covered": 1, "total": 2 }
+  "requests": {
+    "total": 20,
+    "valid": 19,
+    "invalid": 1,
+    "introspection": 1,
+    "unresolved": 0
   },
-  "arguments": { "covered": 23, "total": 29 },
-  "enumValues": { "covered": 11, "total": 25 },
-  "inputFields": { "covered": 15, "total": 22 },
-  "unionMembers": { "covered": 3, "total": 4 },
-  "types": { "covered": 27, "total": 29, "fullyCovered": 10 },
+  "tests": 18,
+  "fields": {
+    "covered": 61,
+    "total": 72
+  },
+  "operations": {
+    "query": {
+      "covered": 9,
+      "total": 9
+    },
+    "mutation": {
+      "covered": 4,
+      "total": 7
+    },
+    "subscription": {
+      "covered": 1,
+      "total": 2
+    }
+  },
+  "arguments": {
+    "covered": 23,
+    "total": 29
+  },
+  "enumValues": {
+    "covered": 11,
+    "total": 25
+  },
+  "inputFields": {
+    "covered": 15,
+    "total": 22
+  },
+  "unionMembers": {
+    "covered": 3,
+    "total": 4
+  },
+  "types": {
+    "covered": 27,
+    "total": 29,
+    "fullyCovered": 10
+  },
   "uncoveredFields": [
     "Content.likes",
     "Mutation.deletePost",
@@ -28,5 +62,14 @@
   ],
   "uncoveredTypes": ["UpdatePostInput", "VideoResolution"],
   "viaInterface": ["Post.publishedAt", "Video.author", "Video.publishedAt", "Video.tags"],
-  "fieldRequests": { "Query.viewer": 4, "User.name": 7, "Post.id": 9 }
+  "fieldRequests": {
+    "Query.viewer": 4,
+    "User.name": 7,
+    "Post.id": 9
+  },
+  "typeRequests": {
+    "Query": 12,
+    "Mutation": 5,
+    "User": 10
+  }
 }

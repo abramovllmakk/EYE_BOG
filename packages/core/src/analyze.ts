@@ -96,6 +96,7 @@ function emptyResult(errors: string[], op: OperationDefinitionNode | null): Anal
     inputFields: [],
     unionMembers: [],
     edges: [],
+    types: [],
     maxDepth: 0,
     depthHistogram: [],
   };
@@ -450,6 +451,17 @@ class Collector {
     }
   }
 
+  /** Per-type usage derived from fields, enum values, input fields and union members. */
+  private typeUsage(): CoordinateUsage[] {
+    const types = new Map<string, number>();
+    const add = (name: string, n: number) => types.set(name, (types.get(name) ?? 0) + n);
+    for (const f of this.fields.values()) add(f.parentType, f.occurrences);
+    for (const m of [this.enumValues, this.inputFields, this.unionMembers]) {
+      for (const [coord, n] of m) add(coord.slice(0, coord.indexOf('.')), n);
+    }
+    return usageList(types);
+  }
+
   result(op: OperationDefinitionNode): AnalysisResult {
     const coords = sortStrings(this.fields.keys());
     const fields = coords.map((coordinate) => {
@@ -492,6 +504,7 @@ class Collector {
         .map((c) => this.fields.get(c)!)
         .filter((f) => f.composite)
         .map((f) => ({ from: f.parentType, field: f.fieldName, to: f.returnType })),
+      types: this.typeUsage(),
       maxDepth: depths.length > 0 ? depths[depths.length - 1]! : 0,
       depthHistogram: depths.map((depth) => ({ depth, fields: this.depthCoords.get(depth)!.size })),
     };

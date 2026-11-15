@@ -151,6 +151,11 @@ export const unionMemberHit = sqliteTable('union_member_hit', { ...hitColumns },
   primaryKey({ columns: [t.runId, t.coordinate] }),
 ]);
 
+/** Requests that used each type (AnalysisResult.types). */
+export const typeHit = sqliteTable('type_hit', { ...hitColumns }, (t) => [
+  primaryKey({ columns: [t.runId, t.coordinate] }),
+]);
+
 export const runTest = sqliteTable(
   'run_test',
   {

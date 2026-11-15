@@ -64,6 +64,8 @@ export interface CoverageData {
   unionMembers: Record<string, HitStats>;
   /** test key → requests */
   tests: Record<string, HitStats>;
+  /** type name → requests that used the type (see AnalysisResult.types). */
+  types: Record<string, HitStats>;
 }
 
 export const MAX_PATHS = 50;
@@ -96,6 +98,7 @@ export function emptyCoverageData(): CoverageData {
     inputFields: {},
     unionMembers: {},
     tests: {},
+    types: {},
   };
 }
 
@@ -164,7 +167,7 @@ export function mergeCoverageData(target: CoverageData, source: CoverageData): C
       cur.sources = unionCapped(cur.sources, a.sources, 2) as ArgumentSource[];
     }
   }
-  for (const key of ['enumValues', 'inputFields', 'unionMembers', 'tests'] as const) {
+  for (const key of ['enumValues', 'inputFields', 'unionMembers', 'tests', 'types'] as const) {
     for (const [c, s] of Object.entries(source[key]))
       addStats(target[key], c, s.requests, s.occurrences);
   }
@@ -183,6 +186,8 @@ export function coverageFromAnalysis(result: AnalysisResult, test?: TestRef | nu
   if (result.introspection) data.requests.introspection = 1;
   const tk = testKey(test);
   data.tests[tk] = { requests: 1, occurrences: 1 };
+  for (const t of result.types)
+    data.types[t.coordinate] = { requests: 1, occurrences: t.occurrences };
   for (const f of result.fields) {
     data.fields[f.coordinate] = {
       requests: 1,
@@ -302,7 +307,13 @@ export interface TypeCoverage {
   status: CoverageStatus;
   /** Fields (object/interface), members (union), values (enum), input fields (input). */
   ratio: Ratio;
+  /**
+   * Requests that used this type (parent of a selected field, passed enum/input, selected union
+   * member). Falls back to the busiest member when per-type data is unavailable (suite-filtered views).
+   */
   requests: number;
+  /** Field selections / usages of the type across those requests. */
+  occurrences: number;
   fields: FieldCoverage[];
   values: ValueCoverage[];
 }
@@ -520,7 +531,17 @@ export function computeCoverage(
 
     const status = statusOf(r);
     if (status === 'uncovered') uncovered.types.push(t.name);
-    types.push({ name: t.name, kind: t.kind, status, ratio: r, requests, fields, values });
+    const usage = data.types[t.name];
+    types.push({
+      name: t.name,
+      kind: t.kind,
+      status,
+      ratio: r,
+      requests: usage?.requests ?? requests,
+      occurrences: usage?.occurrences ?? 0,
+      fields,
+      values,
+    });
   }
 
   const touched = types.filter((t) => t.status !== 'uncovered').length;

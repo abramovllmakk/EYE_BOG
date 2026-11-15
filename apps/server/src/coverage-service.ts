@@ -1,6 +1,8 @@
 import { LRUCache } from 'lru-cache';
 import {
   computeCoverage,
+  emptyCoverageData,
+  mergeCoverageData,
   type CoverageData,
   type CoverageReport,
   type SchemaModel,
@@ -74,6 +76,24 @@ export class CoverageService {
     const result = { run, schema, data, report };
     this.cache.set(key, result);
     return result;
+  }
+
+  /**
+   * Union coverage of several runs of the same target (e.g. all runs of a team): a field covered
+   * by any run counts. Evaluated against the schema of the most recent run.
+   */
+  async aggregate(
+    runs: RunRow[],
+  ): Promise<{ schema: LoadedSchema; data: CoverageData; report: CoverageReport } | null> {
+    const newest = [...runs].sort((a, b) => b.startedAt - a.startedAt);
+    const schema = newest.length ? await this.schemaFor(newest[0]!) : null;
+    if (!schema) return null;
+    const data = emptyCoverageData();
+    for (const run of newest) mergeCoverageData(data, await this.storage.loadCoverage(run.id));
+    const report = computeCoverage(schema.model, data, {
+      propagateInterfaceCoverage: this.config.coverage.propagateInterfaceCoverage,
+    });
+    return { schema, data, report };
   }
 
   model(rc: RunCoverage): SchemaModel {

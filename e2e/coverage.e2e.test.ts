@@ -96,6 +96,15 @@ describe('end-to-end: demo tests → proxy → coverage', () => {
     }
   });
 
+  it('counts how many requests used each type', async () => {
+    const cov = await api<{ types: { name: string; requests: number }[] }>(
+      `/api/runs/${RUN_ID}/coverage`,
+    );
+    for (const [t, n] of Object.entries(expected.typeRequests as Record<string, number>)) {
+      expect(cov.types.find((x) => x.name === t)?.requests, t).toBe(n);
+    }
+  });
+
   it('keeps the proxy transparent for the demo API', async () => {
     const body = JSON.stringify({ query: '{ viewer { name } }' });
     const res = await fetch(PROXY_URL, {

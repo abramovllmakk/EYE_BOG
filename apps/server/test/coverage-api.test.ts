@@ -444,3 +444,37 @@ describe('federation supergraph', () => {
     });
   });
 });
+
+describe('coverage by team', () => {
+  it('unions the coverage of all runs of a team', async () => {
+    const team = { 'x-coverage-team': 'qa-alpha' };
+    await h.gql({ query: '{ viewer { id name } }' }, { ...team, 'x-coverage-run-id': 'team-a1' });
+    await h.gql({ query: '{ tags { name } }' }, { ...team, 'x-coverage-run-id': 'team-a2' });
+    await h.gql(
+      { query: '{ users { id } }' },
+      { 'x-coverage-team': 'qa-beta', 'x-coverage-run-id': 'team-b1' },
+    );
+    await h.app.pipeline.idle();
+    const { json } = await h.api<
+      {
+        team: string | null;
+        target: string;
+        runs: number;
+        summary: { operations: number };
+        uncovered: { operations: string[] };
+      }[]
+    >('GET', '/api/teams');
+    const alpha = json.find((t) => t.team === 'qa-alpha')!;
+    expect(alpha).toMatchObject({ target: 'demo', runs: 2 });
+    // viewer (run 1) + tags (run 2) → both root fields count as covered for the team
+    expect(alpha.uncovered.operations).not.toContain('Query.viewer');
+    expect(alpha.uncovered.operations).not.toContain('Query.tags');
+    expect(alpha.uncovered.operations).toContain('Query.users');
+    expect(json.find((t) => t.team === 'qa-beta')!.uncovered.operations).not.toContain(
+      'Query.users',
+    );
+    expect(json.at(-1)!.team).toBeNull(); // runs without a team come last
+    const filtered = await h.api<unknown[]>('GET', '/api/teams?branch=no-such-branch');
+    expect(filtered.json).toEqual([]);
+  });
+});

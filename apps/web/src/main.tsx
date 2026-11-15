@@ -6,7 +6,13 @@ import { Layout } from './components/Layout';
 import { Empty } from './components/ui';
 import { FieldPage, OperationPage, TypePage } from './pages/DetailPages';
 import { GraphPage } from './pages/GraphPage';
-import { ComparePage, HeatmapPage, OperationsPage, TimelinePage } from './pages/MorePages';
+import {
+  ComparePage,
+  HeatmapPage,
+  OperationsPage,
+  TeamsPage,
+  TimelinePage,
+} from './pages/MorePages';
 import { RunsPage } from './pages/RunsPage';
 import { TablePage } from './pages/TablePage';
 import './index.css';
@@ -28,6 +34,7 @@ const router = createBrowserRouter([
       { path: 'fields/:coordinate', element: <FieldPage /> },
       { path: 'compare', element: <ComparePage /> },
       { path: 'timeline', element: <TimelinePage /> },
+      { path: 'teams', element: <TeamsPage /> },
       {
         path: '*',
         element: <Empty title="Такой страницы нет">Вернитесь к списку прогонов.</Empty>,

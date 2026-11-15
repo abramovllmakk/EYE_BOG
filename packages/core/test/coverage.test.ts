@@ -270,3 +270,37 @@ describe('computeCoverage', () => {
     expect(report.summary.maxDepth).toBe(0);
   });
 });
+
+describe('per-type usage', () => {
+  it('counts every request that used a type, not the busiest field', () => {
+    const acc = new CoverageAccumulator();
+    acc.add(analyzeRequest(schema, { query: '{ me { name } }' }));
+    acc.add(analyzeRequest(schema, { query: '{ me { id } }' }));
+    acc.add(analyzeRequest(schema, { query: '{ a: me { id } b: me { email } }' }));
+    acc.add(
+      analyzeRequest(schema, {
+        query:
+          '{ updateRoleLike: user(id: "1") { role } search(text: "x") { ... on Post { id } } }',
+      }),
+    );
+    acc.add(
+      analyzeRequest(schema, { query: 'mutation { updateRole(userId: "1", role: ADMIN) { id } }' }),
+    );
+    const d = acc.snapshot();
+    expect(d.types['User']).toEqual({ requests: 5, occurrences: 6 });
+    expect(d.types['SearchResult']).toEqual({ requests: 1, occurrences: 1 });
+    expect(d.types['Role']).toEqual({ requests: 1, occurrences: 1 });
+    const user = computeCoverage(model, d).types.find((t) => t.name === 'User')!;
+    expect(user.requests).toBe(5); // busiest field (id) has 3 requests — the old number
+    expect(user.occurrences).toBe(6);
+  });
+
+  it('falls back to the busiest member without per-type data', () => {
+    const d = run([{ query: '{ me { id } }' }, { query: '{ me { id name } }' }]).snapshot();
+    d.types = {};
+    expect(computeCoverage(model, d).types.find((t) => t.name === 'User')!).toMatchObject({
+      requests: 2,
+      occurrences: 0,
+    });
+  });
+});

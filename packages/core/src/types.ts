@@ -72,6 +72,11 @@ export interface AnalysisResult {
   unionMembers: CoordinateUsage[];
   /** Covered relations `Parent.field → NamedChild` for composite return types. */
   edges: EdgeUsage[];
+  /**
+   * Types used by the request: parents of selected fields, enums and input objects that were
+   * passed, unions selected through fragments. `occurrences` = selections / usages of that type.
+   */
+  types: CoordinateUsage[];
   maxDepth: number;
   /** Distinct field coordinates selected at each depth (root fields have depth 1). */
   depthHistogram: { depth: number; fields: number }[];

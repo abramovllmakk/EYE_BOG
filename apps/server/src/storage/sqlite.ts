@@ -331,6 +331,7 @@ export class SqliteStorage implements Storage {
           [s.enumValueHit, data.enumValues],
           [s.inputFieldHit, data.inputFields],
           [s.unionMemberHit, data.unionMembers],
+          [s.typeHit, data.types],
         ] as const) {
           for (const [c, h] of Object.entries(values)) {
             tx.insert(table)
@@ -407,6 +408,7 @@ export class SqliteStorage implements Storage {
         [s.enumValueHit, 'enumValues'],
         [s.inputFieldHit, 'inputFields'],
         [s.unionMemberHit, 'unionMembers'],
+        [s.typeHit, 'types'],
       ] as const) {
         for (const r of this.db.select().from(table).where(eq(table.runId, runId)).all()) {
           data[key][r.coordinate] = { requests: r.requests, occurrences: r.occurrences };

@@ -317,6 +317,7 @@ export class PgStorage implements Storage {
           [s.enumValueHit, data.enumValues],
           [s.inputFieldHit, data.inputFields],
           [s.unionMemberHit, data.unionMembers],
+          [s.typeHit, data.types],
         ] as const) {
           for (const [c, h] of Object.entries(values)) {
             await tx
@@ -389,6 +390,7 @@ export class PgStorage implements Storage {
         [s.enumValueHit, 'enumValues'],
         [s.inputFieldHit, 'inputFields'],
         [s.unionMemberHit, 'unionMembers'],
+        [s.typeHit, 'types'],
       ] as const) {
         for (const r of await this.db.select().from(table).where(eq(table.runId, runId))) {
           data[key][r.coordinate] = { requests: r.requests, occurrences: r.occurrences };

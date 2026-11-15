@@ -49,6 +49,7 @@ function coverage(): CoverageData {
   d.inputFields['F.a'] = { requests: 1, occurrences: 2 };
   d.unionMembers['U.A'] = { requests: 1, occurrences: 1 };
   d.tests['auth::login'] = { requests: 2, occurrences: 2 };
+  d.types['User'] = { requests: 2, occurrences: 3 };
   return d;
 }
 
@@ -146,6 +147,7 @@ for (const [name, make] of drivers) {
       expect(d.arguments['Query.user(id:)']!.sources).toEqual(['literal', 'variable']);
       expect(d.enumValues['Role.ADMIN']).toEqual({ requests: 2, occurrences: 2 });
       expect(d.inputFields['F.a']).toEqual({ requests: 2, occurrences: 4 });
+      expect(d.types['User']).toEqual({ requests: 4, occurrences: 6 });
       expect((await st.getQueryDocument('h1'))!.query).toBe('{ me { name } }');
       expect((await st.getOperation(logIds[1]!))!).toMatchObject({
         status: 'valid',

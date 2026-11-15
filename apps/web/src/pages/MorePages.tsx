@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { NeedRun } from '../components/Layout';
-import { Empty, ErrorBox, Loading, Mono, Select, TextInput } from '../components/ui';
+import { Bar, Empty, ErrorBox, Loading, Mono, Select, TextInput } from '../components/ui';
 import {
   api,
   qs,
@@ -13,6 +13,7 @@ import {
   type Run,
   type TimelinePoint,
   type TypeCoverage,
+  type TeamCoverage,
 } from '../lib/api';
 import { dateTime, pct, runLabel } from '../lib/format';
 import { useParam, useRunLink } from '../lib/url';
@@ -439,6 +440,114 @@ export function TimelinePage() {
             </li>
           ))}
         </ol>
+      )}
+    </div>
+  );
+}
+
+/** Coverage of each team = union of all its runs (within the filters). */
+export function TeamsPage() {
+  const [environment, setEnv] = useParam('env');
+  const [branch, setBranch] = useParam('branch');
+  const [from, setFrom] = useParam('from');
+  const [to, setTo] = useParam('to');
+  const filters = useQuery({ queryKey: ['filters'], queryFn: () => api<Filters>('/api/filters') });
+  const params = { environment, branch, from, to: to ? `${to}T23:59:59` : '' };
+  const teams = useQuery({
+    queryKey: ['teams', params],
+    queryFn: () => api<TeamCoverage[]>(`/api/teams${qs(params)}`),
+  });
+  return (
+    <div className="mx-auto max-w-7xl p-6">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="mr-auto">
+          <h1 className="text-xl font-semibold">Покрытие по командам</h1>
+          <p className="mt-1 max-w-prose text-muted">
+            Все прогоны команды вместе: поле считается покрытым, если его проверил хотя бы один
+            прогон этой команды. Команда берётся из заголовка X-Coverage-Team или из gqlcov run
+            start --team.
+          </p>
+        </div>
+        <Select
+          label="Окружение"
+          value={environment}
+          onChange={setEnv}
+          options={filters.data?.environments ?? []}
+        />
+        <Select
+          label="Ветка"
+          value={branch}
+          onChange={setBranch}
+          options={filters.data?.branches ?? []}
+        />
+        <TextInput label="С даты" type="date" value={from} onChange={setFrom} />
+        <TextInput label="По дату" type="date" value={to} onChange={setTo} />
+      </div>
+      {teams.error && <ErrorBox error={teams.error} />}
+      {teams.isLoading && <Loading what="команды" />}
+      {teams.data && teams.data.length === 0 && <Empty title="Нет прогонов под эти фильтры" />}
+      {teams.data && teams.data.length > 0 && (
+        <div className="mt-5 overflow-x-auto rounded-lg border border-line bg-surface">
+          <table className="w-full text-left">
+            <thead className="border-b border-line text-xs text-muted">
+              <tr>
+                <th className="px-3 py-2 font-medium">Команда</th>
+                <th className="px-3 py-2 font-medium">Сервер</th>
+                <th className="px-3 py-2 font-medium">Прогонов</th>
+                <th className="px-3 py-2 font-medium">Последний</th>
+                <th className="w-40 px-3 py-2 font-medium">Поля</th>
+                <th className="px-3 py-2 font-medium">Операции</th>
+                <th className="px-3 py-2 font-medium">Типы</th>
+                <th className="px-3 py-2 font-medium">Аргументы</th>
+                <th className="px-3 py-2 font-medium">Не вызваны</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teams.data.map((t) => (
+                <tr
+                  key={`${t.team}|${t.target}`}
+                  className="border-b border-line align-top last:border-0 hover:bg-surface-2"
+                >
+                  <td className="px-3 py-2 font-medium">
+                    {t.team ? (
+                      <Link to={`/?team=${encodeURIComponent(t.team)}`} className="hover:underline">
+                        {t.team}
+                      </Link>
+                    ) : (
+                      <span className="text-muted">без команды</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">{t.target}</td>
+                  <td className="px-3 py-2 tabular-nums">{t.runs}</td>
+                  <td className="px-3 py-2 tabular-nums">{dateTime(t.lastRunAt)}</td>
+                  <td className="px-3 py-2">
+                    <div className="tabular-nums">{pct(t.summary.fields)}</div>
+                    <Bar value={t.summary.fields} className="mt-1" />
+                  </td>
+                  <td className="px-3 py-2 tabular-nums">{pct(t.summary.operations)}</td>
+                  <td className="px-3 py-2 tabular-nums">{pct(t.summary.types)}</td>
+                  <td className="px-3 py-2 tabular-nums">{pct(t.summary.arguments)}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {t.uncovered.operations.length === 0 ? (
+                      <span className="text-muted">все вызваны</span>
+                    ) : (
+                      <details>
+                        <summary className="cursor-pointer">
+                          {t.uncovered.operations.length} операций
+                        </summary>
+                        <ul className="mt-1 font-mono">
+                          {t.uncovered.operations.map((o) => (
+                            <li key={o}>{o}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

@@ -20,7 +20,7 @@ import {
   Empty,
   Mono,
 } from '../components/ui';
-import { api, type CoverageSummary, type TypeCoverage } from '../lib/api';
+import { api, getToken, qs, type CoverageSummary, type TypeCoverage } from '../lib/api';
 import { statusText, type Status } from '../lib/format';
 import { useParam, useRunLink } from '../lib/url';
 
@@ -40,6 +40,79 @@ interface FieldRow {
 }
 
 const col = createColumnHelper<FieldRow>();
+
+/** How deep tests go: distinct covered fields first reached at each nesting level. */
+export function DepthCoverage({ s }: { s: CoverageSummary }) {
+  if (s.depth.length === 0) return null;
+  const max = Math.max(...s.depth.map((d) => d.fields));
+  return (
+    <section
+      className="rounded-md border border-line bg-surface px-4 py-3"
+      aria-label="Покрытие по вложенности"
+    >
+      <div className="flex items-baseline gap-3">
+        <h2 className="font-medium">Покрытие по вложенности</h2>
+        <span className="text-xs text-muted">
+          сколько разных полей тесты задействовали на каждом уровне; самый глубокий запрос —{' '}
+          {s.maxDepth}
+        </span>
+      </div>
+      <ol className="mt-3 grid gap-1.5">
+        {s.depth.map((d) => (
+          <li
+            key={d.depth}
+            className="grid grid-cols-[7.5rem_1fr_4.5rem] items-center gap-3 text-sm"
+          >
+            <span className="text-muted">
+              {d.depth === 1 ? 'уровень 1, корень' : `уровень ${d.depth}`}
+            </span>
+            <span className="h-2.5 overflow-hidden rounded-full bg-uncovered-soft">
+              <span
+                className="block h-full rounded-full bg-accent"
+                style={{ width: `${(d.fields / max) * 100}%` }}
+              />
+            </span>
+            <span className="tabular-nums">
+              {d.fields}{' '}
+              {d.fields % 10 === 1 && d.fields % 100 !== 11
+                ? 'поле'
+                : d.fields % 10 >= 2 &&
+                    d.fields % 10 <= 4 &&
+                    (d.fields % 100 < 12 || d.fields % 100 > 14)
+                  ? 'поля'
+                  : 'полей'}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** Download links for the run export (token passed as query param when auth is on). */
+function ExportButtons({ run }: { run: string }) {
+  const token = getToken();
+  const href = (format: 'csv' | 'json') =>
+    `/api/runs/${encodeURIComponent(run)}/export${qs({ format, token })}`;
+  return (
+    <div className="flex gap-2">
+      <a
+        href={href('csv')}
+        download
+        className="rounded-md border border-line bg-surface px-3 py-1.5 hover:bg-surface-2"
+      >
+        Скачать CSV
+      </a>
+      <a
+        href={href('json')}
+        download
+        className="rounded-md border border-line bg-surface px-3 py-1.5 hover:bg-surface-2"
+      >
+        Скачать JSON
+      </a>
+    </div>
+  );
+}
 
 export function Summary({ s }: { s: CoverageSummary }) {
   return (
@@ -212,7 +285,14 @@ export function TablePage() {
   ];
   return (
     <div className="mx-auto max-w-7xl p-6">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <h1 className="mr-auto text-xl font-semibold">Покрытие прогона</h1>
+        <ExportButtons run={run} />
+      </div>
       <Summary s={cov.data.summary} />
+      <div className="mt-3">
+        <DepthCoverage s={cov.data.summary} />
+      </div>
       <div className="mt-6 flex flex-wrap items-end gap-3">
         <div className="mr-auto flex gap-1" role="tablist">
           {tabs.map((t) => (

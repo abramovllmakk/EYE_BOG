@@ -13,6 +13,7 @@ const NAV = [
   { to: '/operations', label: 'Запросы', needsRun: true },
   { to: '/compare', label: 'Сравнение', needsRun: false },
   { to: '/timeline', label: 'Динамика', needsRun: false },
+  { to: '/teams', label: 'Команды', needsRun: false },
 ];
 
 /** Dark on every visit; the button flips to light for the current page session only. */
