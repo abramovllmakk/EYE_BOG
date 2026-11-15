@@ -549,12 +549,10 @@ export function computeCoverage(
       tests: Object.keys(data.tests).length,
       maxDepth: Object.values(data.fields).reduce((m, f) => Math.max(m, f.maxDepth), 0),
       depth: depths.map((d) => ({ depth: d, fields: depth.get(d)! })),
-      services: [...perService.keys()]
-        .sort()
-        .map((service) => ({
-          service,
-          fields: ratio(perService.get(service)!.covered, perService.get(service)!.total),
-        })),
+      services: [...perService.keys()].sort().map((service) => ({
+        service,
+        fields: ratio(perService.get(service)!.covered, perService.get(service)!.total),
+      })),
     },
     types,
     uncovered: {
