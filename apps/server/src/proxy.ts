@@ -4,6 +4,7 @@ import { pipeline } from 'node:stream/promises';
 import { performance } from 'node:perf_hooks';
 import { Busboy, type BusboyInstance } from '@fastify/busboy';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { decodeHeaderValue } from '@gqlcov/core';
 import { Pool } from 'undici';
 import type { Logger } from 'pino';
 import type { Config, TargetConfig } from './config.js';
@@ -37,15 +38,19 @@ const header = (h: IncomingHttpHeaders, name: string): string | undefined => {
   return Array.isArray(v) ? v[0] : v;
 };
 
+/** Metadata header as readable text (UTF-8 bytes and percent-encoding are decoded). */
+export const headerText = (h: IncomingHttpHeaders, name: string): string | undefined =>
+  decodeHeaderValue(header(h, name));
+
 export function extractMeta(config: Config, h: IncomingHttpHeaders, pathRunId?: string): RunMeta {
   const n = config.runs.headers;
   return {
-    runId: pathRunId ?? header(h, n.runId),
-    environment: header(h, n.environment),
-    branch: header(h, n.branch),
-    build: header(h, n.build),
-    commit: header(h, n.commit),
-    team: header(h, n.team),
+    runId: pathRunId ?? headerText(h, n.runId),
+    environment: headerText(h, n.environment),
+    branch: headerText(h, n.branch),
+    build: headerText(h, n.build),
+    commit: headerText(h, n.commit),
+    team: headerText(h, n.team),
     // X-Test-Suite describes a single test, not the run: it is stored per operation/test only.
   };
 }
@@ -287,8 +292,8 @@ export function registerProxyRoutes(app: FastifyInstance, ctx: ProxyContext): vo
         headers: req.headers,
         meta: extractMeta(config, req.headers, (req.params as { runId?: string }).runId),
         test: {
-          name: header(req.headers, config.runs.headers.testName),
-          suite: header(req.headers, config.runs.headers.testSuite),
+          name: headerText(req.headers, config.runs.headers.testName),
+          suite: headerText(req.headers, config.runs.headers.testSuite),
         },
         httpStatus: status,
         responseBody,

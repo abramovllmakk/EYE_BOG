@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import type { GraphQLRequest } from '@gqlcov/core';
 import type { TargetConfig } from './config.js';
-import { extractMeta, upstreamHeaders, type ProxyContext } from './proxy.js';
+import { extractMeta, headerText, upstreamHeaders, type ProxyContext } from './proxy.js';
 
 /** Messages that carry a GraphQL document in both supported protocols. */
 const START_TYPES = new Set(['subscribe', 'start']); // graphql-transport-ws / subscriptions-transport-ws
@@ -121,10 +121,7 @@ export function registerWsProxy(app: FastifyInstance, ctx: ProxyContext): void {
       const msg = JSON.parse(data.toString()) as { type?: string; payload?: GraphQLRequest };
       if (!msg.type || !START_TYPES.has(msg.type) || !msg.payload) return;
       const h = ctx.config.runs.headers;
-      const header = (n: string) => {
-        const v = req.headers[n];
-        return Array.isArray(v) ? v[0] : v;
-      };
+      const header = (n: string) => headerText(req.headers, n);
       ctx.pipeline.enqueue({
         target: r.target.name,
         ts: Date.now(),

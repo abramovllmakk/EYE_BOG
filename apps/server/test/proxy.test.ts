@@ -172,3 +172,61 @@ describe('headers', () => {
     expect(ops.json.items[0]!.fields).toContain('Mutation.createPost');
   });
 });
+
+describe('non-ASCII metadata headers', () => {
+  it('decodes raw UTF-8 and percent-encoded test names, suites and branches', async () => {
+    // Raw UTF-8 bytes on the wire, exactly like curl sends them (written straight to a socket so
+    // no HTTP client re-encodes the header).
+    const { connect } = await import('node:net');
+    const u = new URL(h.proxyUrl);
+    const body = JSON.stringify({ query: '{ viewer { name } }' });
+    const head = [
+      'POST /graphql HTTP/1.1',
+      `Host: ${u.host}`,
+      'Content-Type: application/json',
+      `Content-Length: ${Buffer.byteLength(body)}`,
+      'X-Coverage-Run-Id: utf8-run',
+      'X-Coverage-Branch: фича/кириллица',
+      'X-Test-Name: мой первый тест',
+      'X-Test-Suite: профиль',
+      'Connection: close',
+      '',
+      '',
+    ].join('\r\n');
+    await new Promise<void>((resolve, reject) => {
+      const sock = connect(Number(u.port), u.hostname, () =>
+        sock.end(Buffer.concat([Buffer.from(head, 'utf8'), Buffer.from(body)])),
+      );
+      sock.on('data', () => {});
+      sock.on('close', () => resolve());
+      sock.on('error', reject);
+    });
+    // Percent-encoded, the only way for fetch()-based clients.
+    await h.gql(
+      { query: '{ tags { name } }' },
+      { 'x-coverage-run-id': 'utf8-run', 'x-test-name': encodeURIComponent('логин админа') },
+    );
+    await h.app.pipeline.idle();
+    const tests = await h.api<{ testKey: string; name: string; suite: string | null }[]>(
+      'GET',
+      '/api/runs/utf8-run/tests',
+    );
+    expect(tests.json.map((t) => t.testKey).sort()).toEqual([
+      'логин админа',
+      'профиль::мой первый тест',
+    ]);
+    const run = await h.api<{ branch: string }>('GET', '/api/runs/utf8-run');
+    expect(run.json.branch).toBe('фича/кириллица');
+    const ops = await h.api<{ items: { testName: string; headers: Record<string, string> }[] }>(
+      'GET',
+      '/api/runs/utf8-run/operations',
+    );
+    expect(ops.json.items.map((o) => o.testName).sort()).toEqual([
+      'логин админа',
+      'мой первый тест',
+    ]);
+    expect(
+      ops.json.items.find((o) => o.testName === 'мой первый тест')!.headers['x-test-suite'],
+    ).toBe('профиль');
+  });
+});

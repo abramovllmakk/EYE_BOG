@@ -94,3 +94,29 @@ export function persistedQueryHash(req: GraphQLRequest): string | null {
   if (!isRecord(pq)) return null;
   return typeof pq.sha256Hash === 'string' ? pq.sha256Hash : null;
 }
+
+/**
+ * Human-readable text of a metadata header (test name, branch, …).
+ *  - Node exposes raw header bytes as latin1 characters, so UTF-8 sent as-is (curl, many HTTP
+ *    clients) arrives garbled: it is re-decoded when the bytes form valid UTF-8.
+ *  - Clients that cannot send non-ASCII headers (browser/undici `fetch`) can percent-encode
+ *    the value (`encodeURIComponent`); `%XX` sequences are decoded.
+ * Plain ASCII values are returned unchanged.
+ */
+export function decodeHeaderValue(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  let text = value;
+  // Every char ≤ 0xFF and at least one ≥ 0x80 → raw bytes read as latin1.
+  if (/[\u0080-ÿ]/.test(text) && !/[^\u0000-ÿ]/.test(text)) {
+    const utf8 = Buffer.from(text, 'latin1').toString('utf8');
+    if (!utf8.includes('�')) text = utf8;
+  }
+  if (/%[0-9a-f]{2}/i.test(text)) {
+    try {
+      text = decodeURIComponent(text);
+    } catch {
+      // Not valid percent-encoding: keep as is (e.g. "100% done").
+    }
+  }
+  return text;
+}

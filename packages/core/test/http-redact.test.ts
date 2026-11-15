@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MASK,
+  decodeHeaderValue,
   maskHeaders,
   parseHttpGraphQLRequest,
   parseOperationsJson,
@@ -148,5 +149,27 @@ describe('redaction', () => {
         ['authorization', 'X-Api-Key', 'cookie'],
       ),
     ).toEqual({ Authorization: MASK, 'x-api-key': MASK, accept: 'a, b', host: 'h' });
+  });
+});
+
+describe('decodeHeaderValue', () => {
+  const asLatin1 = (s: string) => Buffer.from(s, 'utf8').toString('latin1'); // what Node gives us
+
+  it('re-decodes raw UTF-8 bytes', () => {
+    expect(decodeHeaderValue(asLatin1('мой первый тест'))).toBe('мой первый тест');
+    expect(decodeHeaderValue(asLatin1('ветка/фича-1'))).toBe('ветка/фича-1');
+  });
+
+  it('decodes percent-encoded values', () => {
+    expect(decodeHeaderValue(encodeURIComponent('логин админа'))).toBe('логин админа');
+  });
+
+  it('keeps ASCII, real latin1 and invalid sequences unchanged', () => {
+    expect(decodeHeaderValue('login test')).toBe('login test');
+    expect(decodeHeaderValue('café')).toBe('café'); // not valid UTF-8 bytes → genuine latin1
+    expect(decodeHeaderValue('100% done')).toBe('100% done');
+    expect(decodeHeaderValue('bad %E0%A4%A')).toBe('bad %E0%A4%A');
+    expect(decodeHeaderValue('emoji 😀')).toBe('emoji 😀'); // already decoded text
+    expect(decodeHeaderValue(undefined)).toBeUndefined();
   });
 });

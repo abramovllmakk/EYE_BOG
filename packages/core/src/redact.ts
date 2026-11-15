@@ -1,3 +1,5 @@
+import { decodeHeaderValue } from './http.js';
+
 export type VariablesPolicy = 'none' | 'structure' | 'full';
 
 export const MASK = '***';
@@ -55,7 +57,9 @@ export function maskHeaders(
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
     if (v === undefined) continue;
-    out[k] = set.has(k.toLowerCase()) ? MASK : Array.isArray(v) ? v.join(', ') : v;
+    out[k] = set.has(k.toLowerCase())
+      ? MASK
+      : (decodeHeaderValue(Array.isArray(v) ? v.join(', ') : v) as string);
   }
   return out;
 }
