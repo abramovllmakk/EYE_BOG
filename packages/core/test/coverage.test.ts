@@ -79,6 +79,9 @@ describe('accumulator', () => {
     expect(d.requests.unresolved).toBe(1);
     expect(d.requests.total).toBe(2);
     expect(acc.isEmpty).toBe(true);
+    acc.addUnresolved();
+    acc.correctUnresolved();
+    expect(acc.snapshot().requests).toMatchObject({ total: 0, unresolved: 0 });
   });
 
   it('merges field details (depth, conditional, aliases, args, enums, paths cap)', () => {

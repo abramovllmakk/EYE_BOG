@@ -6,31 +6,141 @@ import { GraphQLError, NoSchemaIntrospectionCustomRule } from 'graphql';
 type Role = 'ADMIN' | 'EDITOR' | 'AUTHOR' | 'READER';
 type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
-interface UserRow { id: string; name: string; email: string | null; role: Role; bio: string | null; following: string[] }
-interface PostRow { id: string; title: string; body: string; authorId: string; status: PostStatus; tags: string[]; likes: number; publishedAt: string | null }
-interface VideoRow { id: string; title: string; authorId: string; tags: string[]; likes: number; durationSec: number; resolution: 'SD' | 'HD' | 'UHD'; publishedAt: string }
-interface CommentRow { id: string; text: string; authorId: string; postId: string; parentId: string | null; createdAt: string }
+interface UserRow {
+  id: string;
+  name: string;
+  email: string | null;
+  role: Role;
+  bio: string | null;
+  following: string[];
+}
+interface PostRow {
+  id: string;
+  title: string;
+  body: string;
+  authorId: string;
+  status: PostStatus;
+  tags: string[];
+  likes: number;
+  publishedAt: string | null;
+}
+interface VideoRow {
+  id: string;
+  title: string;
+  authorId: string;
+  tags: string[];
+  likes: number;
+  durationSec: number;
+  resolution: 'SD' | 'HD' | 'UHD';
+  publishedAt: string;
+}
+interface CommentRow {
+  id: string;
+  text: string;
+  authorId: string;
+  postId: string;
+  parentId: string | null;
+  createdAt: string;
+}
 
 export const typeDefs = readFileSync(new URL('./schema.graphql', import.meta.url), 'utf8');
 
 function seed() {
   const users: UserRow[] = [
-    { id: 'u1', name: 'Alice', email: 'alice@example.com', role: 'ADMIN', bio: 'Editor in chief', following: ['u2', 'u3'] },
-    { id: 'u2', name: 'Bob', email: 'bob@example.com', role: 'AUTHOR', bio: null, following: ['u1'] },
-    { id: 'u3', name: 'Carol', email: null, role: 'READER', bio: 'Reads everything', following: ['u1', 'u2'] },
+    {
+      id: 'u1',
+      name: 'Alice',
+      email: 'alice@example.com',
+      role: 'ADMIN',
+      bio: 'Editor in chief',
+      following: ['u2', 'u3'],
+    },
+    {
+      id: 'u2',
+      name: 'Bob',
+      email: 'bob@example.com',
+      role: 'AUTHOR',
+      bio: null,
+      following: ['u1'],
+    },
+    {
+      id: 'u3',
+      name: 'Carol',
+      email: null,
+      role: 'READER',
+      bio: 'Reads everything',
+      following: ['u1', 'u2'],
+    },
   ];
   const posts: PostRow[] = [
-    { id: 'p1', title: 'GraphQL coverage', body: '# Why coverage', authorId: 'u1', status: 'PUBLISHED', tags: ['graphql', 'testing'], likes: 12, publishedAt: '2026-01-10T10:00:00Z' },
-    { id: 'p2', title: 'Proxies explained', body: 'Proxies sit in between', authorId: 'u2', status: 'PUBLISHED', tags: ['http'], likes: 5, publishedAt: '2026-02-01T09:00:00Z' },
-    { id: 'p3', title: 'Draft ideas', body: 'tbd', authorId: 'u2', status: 'DRAFT', tags: [], likes: 0, publishedAt: null },
+    {
+      id: 'p1',
+      title: 'GraphQL coverage',
+      body: '# Why coverage',
+      authorId: 'u1',
+      status: 'PUBLISHED',
+      tags: ['graphql', 'testing'],
+      likes: 12,
+      publishedAt: '2026-01-10T10:00:00Z',
+    },
+    {
+      id: 'p2',
+      title: 'Proxies explained',
+      body: 'Proxies sit in between',
+      authorId: 'u2',
+      status: 'PUBLISHED',
+      tags: ['http'],
+      likes: 5,
+      publishedAt: '2026-02-01T09:00:00Z',
+    },
+    {
+      id: 'p3',
+      title: 'Draft ideas',
+      body: 'tbd',
+      authorId: 'u2',
+      status: 'DRAFT',
+      tags: [],
+      likes: 0,
+      publishedAt: null,
+    },
   ];
   const videos: VideoRow[] = [
-    { id: 'v1', title: 'Voyager tour', authorId: 'u1', tags: ['graphql'], likes: 30, durationSec: 420, resolution: 'HD', publishedAt: '2026-03-03T12:00:00Z' },
+    {
+      id: 'v1',
+      title: 'Voyager tour',
+      authorId: 'u1',
+      tags: ['graphql'],
+      likes: 30,
+      durationSec: 420,
+      resolution: 'HD',
+      publishedAt: '2026-03-03T12:00:00Z',
+    },
   ];
   const comments: CommentRow[] = [
-    { id: 'c1', text: 'Great post', authorId: 'u3', postId: 'p1', parentId: null, createdAt: '2026-01-11T08:00:00Z' },
-    { id: 'c2', text: 'Agreed', authorId: 'u2', postId: 'p1', parentId: 'c1', createdAt: '2026-01-11T09:00:00Z' },
-    { id: 'c3', text: 'Nice', authorId: 'u1', postId: 'p2', parentId: null, createdAt: '2026-02-02T10:00:00Z' },
+    {
+      id: 'c1',
+      text: 'Great post',
+      authorId: 'u3',
+      postId: 'p1',
+      parentId: null,
+      createdAt: '2026-01-11T08:00:00Z',
+    },
+    {
+      id: 'c2',
+      text: 'Agreed',
+      authorId: 'u2',
+      postId: 'p1',
+      parentId: 'c1',
+      createdAt: '2026-01-11T09:00:00Z',
+    },
+    {
+      id: 'c3',
+      text: 'Nice',
+      authorId: 'u1',
+      postId: 'p2',
+      parentId: null,
+      createdAt: '2026-02-02T10:00:00Z',
+    },
   ];
   return { users, posts, videos, comments, seq: 100 };
 }
@@ -56,7 +166,8 @@ export function createDemoYoga(options: DemoOptions = {}) {
     return u;
   };
   const tagRow = (name: string) => ({ name });
-  const allTags = () => [...new Set([...db.posts, ...db.videos].flatMap((c) => c.tags))].sort().map(tagRow);
+  const allTags = () =>
+    [...new Set([...db.posts, ...db.videos].flatMap((c) => c.tags))].sort().map(tagRow);
   const nodeById = (id: string) =>
     userById(id) ??
     postById(id) ??
@@ -100,7 +211,12 @@ export function createDemoYoga(options: DemoOptions = {}) {
               (!a.filter?.text || p.title.toLowerCase().includes(a.filter.text.toLowerCase())),
           );
           if (a.order) {
-            const key = a.order.field === 'LIKES' ? 'likes' : a.order.field === 'TITLE' ? 'title' : 'publishedAt';
+            const key =
+              a.order.field === 'LIKES'
+                ? 'likes'
+                : a.order.field === 'TITLE'
+                  ? 'title'
+                  : 'publishedAt';
             const dir = a.order.direction === 'ASC' ? 1 : -1;
             list = [...list].sort((x, y) => ((x[key] ?? '') > (y[key] ?? '') ? dir : -dir));
           }
@@ -123,7 +239,10 @@ export function createDemoYoga(options: DemoOptions = {}) {
         tags: allTags,
       },
       Mutation: {
-        createPost: (_: unknown, a: { input: { title: string; body: string; tags?: string[]; status: PostStatus } }) => {
+        createPost: (
+          _: unknown,
+          a: { input: { title: string; body: string; tags?: string[]; status: PostStatus } },
+        ) => {
           const post: PostRow = {
             id: `p${++db.seq}`,
             title: a.input.title,
@@ -138,9 +257,13 @@ export function createDemoYoga(options: DemoOptions = {}) {
           void pubsub.publish('postAdded', post);
           return post;
         },
-        updatePost: (_: unknown, a: { id: string; input: Partial<Pick<PostRow, 'title' | 'body' | 'status' | 'tags'>> }) => {
+        updatePost: (
+          _: unknown,
+          a: { id: string; input: Partial<Pick<PostRow, 'title' | 'body' | 'status' | 'tags'>> },
+        ) => {
           const post = mustPost(a.id);
-          for (const [k, v] of Object.entries(a.input)) if (v != null) Object.assign(post, { [k]: v });
+          for (const [k, v] of Object.entries(a.input))
+            if (v != null) Object.assign(post, { [k]: v });
           return post;
         },
         deletePost: (_: unknown, a: { id: string }) => {
@@ -153,7 +276,10 @@ export function createDemoYoga(options: DemoOptions = {}) {
           post.likes += 1;
           return post;
         },
-        addComment: (_: unknown, a: { input: { postId: string; text: string; parentId?: string } }) => {
+        addComment: (
+          _: unknown,
+          a: { input: { postId: string; text: string; parentId?: string } },
+        ) => {
           mustPost(a.input.postId);
           const c: CommentRow = {
             id: `c${++db.seq}`,
@@ -188,14 +314,18 @@ export function createDemoYoga(options: DemoOptions = {}) {
           resolve: (p: PostRow) => p,
         },
         commentAdded: {
-          subscribe: (_: unknown, a: { postId: string }) => pubsub.subscribe('commentAdded', a.postId),
+          subscribe: (_: unknown, a: { postId: string }) =>
+            pubsub.subscribe('commentAdded', a.postId),
           resolve: (c: CommentRow) => c,
         },
       },
       User: {
-        avatarUrl: (u: UserRow, a: { size: number }) => `https://avatars.example.com/${u.id}?s=${a.size}`,
+        avatarUrl: (u: UserRow, a: { size: number }) =>
+          `https://avatars.example.com/${u.id}?s=${a.size}`,
         posts: (u: UserRow, a: { first: number; status?: PostStatus }) =>
-          db.posts.filter((p) => p.authorId === u.id && (!a.status || p.status === a.status)).slice(0, a.first),
+          db.posts
+            .filter((p) => p.authorId === u.id && (!a.status || p.status === a.status))
+            .slice(0, a.first),
         videos: (u: UserRow) => db.videos.filter((v) => v.authorId === u.id),
         followers: (u: UserRow, a: { first: number }) =>
           db.users.filter((x) => x.following.includes(u.id)).slice(0, a.first),
@@ -213,17 +343,25 @@ export function createDemoYoga(options: DemoOptions = {}) {
         author: (p: PostRow) => userById(p.authorId),
         tags: (p: PostRow) => p.tags.map(tagRow),
         body: (p: PostRow, a: { format: string }) =>
-          a.format === 'HTML' ? `<p>${p.body}</p>` : a.format === 'PLAIN' ? p.body.replace(/[#*_]/g, '') : p.body,
+          a.format === 'HTML'
+            ? `<p>${p.body}</p>`
+            : a.format === 'PLAIN'
+              ? p.body.replace(/[#*_]/g, '')
+              : p.body,
         comments: (p: PostRow, a: { first: number; order: string }) => {
           let list = db.comments.filter((c) => c.postId === p.id && c.parentId === null);
-          list = [...list].sort((x, y) => (a.order === 'OLDEST' ? 1 : -1) * x.createdAt.localeCompare(y.createdAt));
+          list = [...list].sort(
+            (x, y) => (a.order === 'OLDEST' ? 1 : -1) * x.createdAt.localeCompare(y.createdAt),
+          );
           const page = list.slice(0, a.first);
           return {
             totalCount: list.length,
             edges: page.map((node) => ({ cursor: Buffer.from(node.id).toString('base64'), node })),
             pageInfo: {
               hasNextPage: list.length > page.length,
-              endCursor: page.length ? Buffer.from(page[page.length - 1]!.id).toString('base64') : null,
+              endCursor: page.length
+                ? Buffer.from(page[page.length - 1]!.id).toString('base64')
+                : null,
             },
           };
         },

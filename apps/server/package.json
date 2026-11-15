@@ -1,0 +1,49 @@
+{
+  "name": "@gqlcov/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GraphQL Coverage Proxy: transparent proxy, analysis queue, storage and REST API.",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "gqlcov-server": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx --conditions=source src/main.ts",
+    "db:generate": "drizzle-kit generate",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "drizzle-kit": "0.31.11",
+    "openapi-types": "^12.1.3"
+  },
+  "dependencies": {
+    "@fastify/busboy": "3.2.5",
+    "@fastify/static": "10.1.11",
+    "@fastify/swagger": "9.9.4",
+    "@fastify/swagger-ui": "6.1.4",
+    "@gqlcov/core": "workspace:*",
+    "@gqlcov/demo-server": "workspace:*",
+    "better-sqlite3": "13.2.0",
+    "drizzle-orm": "0.45.4",
+    "fastify": "5.12.8",
+    "fastify-type-provider-zod": "7.0.0",
+    "graphql": "16.15.0",
+    "lru-cache": "11.5.3",
+    "pino": "10.4.0",
+    "prom-client": "15.1.3",
+    "undici": "8.12.4",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  }
+}

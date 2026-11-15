@@ -225,6 +225,12 @@ export class CoverageAccumulator {
     this.data.requests.unresolved += 1;
   }
 
+  /** An unresolved APQ request was resolved later: it is now counted as analysed instead. */
+  correctUnresolved(): void {
+    this.data.requests.total -= 1;
+    this.data.requests.unresolved -= 1;
+  }
+
   get isEmpty(): boolean {
     return this.data.requests.total === 0;
   }
