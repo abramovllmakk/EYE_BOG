@@ -1,0 +1,11 @@
+# Adds Shikimori (shikimori.io, public Russian anime/manga database) as a second proxy target.
+#   docker compose -f docker-compose.yml -f examples/shikimori/compose.yml up -d
+# Tests then use http://localhost:4000/t/shikimori/graphql instead of https://shikimori.io/api/graphql
+services:
+  gqlcov:
+    environment:
+      GQLCOV_TARGETS__1__NAME: shikimori
+      GQLCOV_TARGETS__1__URL: https://shikimori.io/api/graphql
+      # Shikimori asks API clients to identify themselves with a User-Agent.
+      GQLCOV_TARGETS__1__SCHEMA__HEADERS: '{"user-agent":"gqlcov-demo"}'
+      GQLCOV_TARGETS__1__HEADERS__ADD: '{"user-agent":"gqlcov-demo"}'
