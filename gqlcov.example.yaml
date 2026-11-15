@@ -1,0 +1,41 @@
+# GraphQL Coverage Proxy configuration. Every key can be overridden by env:
+#   GQLCOV_<SECTION>__<KEY>, e.g. GQLCOV_SERVER__PROXY_PORT=8080, GQLCOV_TARGETS__0__URL=...
+#   shortcuts: TARGET_URL, AUTH_TOKEN, DATABASE_URL
+server:
+  host: 0.0.0.0
+  proxyPort: 4000 # tests point here instead of the real API
+  adminPort: 4001 # UI, REST API (/api), OpenAPI (/docs), /metrics
+
+targets:
+  - name: demo
+    url: http://localhost:4100/graphql
+    schema:
+      source: introspection # or "sdl" with file: ./schema.graphql
+      headers: {} # headers for the introspection request
+      refreshIntervalSec: 0
+    headers:
+      add: {} # set only if the client did not send it
+      override: {} # e.g. { authorization: "Bearer stand-token" }
+      remove: []
+
+runs:
+  idleTimeoutSec: 900
+  stripHeaderPrefixes: [x-coverage-]
+
+logging:
+  level: info
+  variables: structure # none | structure | full
+  maskHeaders: [authorization, cookie, set-cookie, x-api-key, proxy-authorization]
+
+retention:
+  operationLogDays: 14
+
+auth:
+  token: '' # set to protect /api and the UI
+
+coverage:
+  propagateInterfaceCoverage: false
+
+storage:
+  driver: sqlite
+  url: ./data/gqlcov.db

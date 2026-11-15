@@ -1,0 +1,15 @@
+{
+  "name": "@gqlcov/demo-traffic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Demo 'autotests' that send GraphQL traffic through the proxy.",
+  "bin": {
+    "gqlcov-demo-traffic": "./src/run.mjs"
+  },
+  "scripts": {
+    "start": "node src/run.mjs",
+    "typecheck": "echo 'plain JS'",
+    "test": "echo 'checked by e2e'"
+  }
+}

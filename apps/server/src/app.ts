@@ -172,7 +172,7 @@ export function createApp(config: Config, baseDir: string, options: AppOptions =
 
   const webDir = config.server.webDir ? resolve(baseDir, config.server.webDir) : defaultWebDir();
   if (webDir && existsSync(join(webDir, 'index.html'))) {
-    void admin.register(fastifyStatic, { root: webDir, wildcard: false, index: ['index.html'] });
+    void admin.register(fastifyStatic, { root: webDir, wildcard: true, index: ['index.html'] });
     admin.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/') || req.method !== 'GET') {
         return reply.code(404).send({ error: 'not_found', message: `${req.method} ${req.url}` });
