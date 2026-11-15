@@ -1,0 +1,28 @@
+{
+  "name": "@gqlcov/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure GraphQL query analyzer and coverage model (no I/O).",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "peerDependencies": {
+    "graphql": "^16.15.0"
+  },
+  "devDependencies": {
+    "graphql": "16.15.0"
+  }
+}

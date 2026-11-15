@@ -1,0 +1,116 @@
+"Fixture schema for analyzer tests: interfaces, unions, enums, nested inputs, recursion."
+interface Node {
+  id: ID!
+}
+
+interface Content implements Node {
+  id: ID!
+  title: String!
+  author: User!
+}
+
+type User implements Node {
+  id: ID!
+  name: String!
+  email: String
+  role: Role!
+  posts(first: Int = 10, after: String, orderBy: PostOrder): [Post!]!
+  friends(first: Int): [User!]!
+  bestFriend: User
+}
+
+type Post implements Node & Content {
+  id: ID!
+  title: String!
+  author: User!
+  body: String!
+  tags: [String!]!
+  status: PostStatus!
+  comments(first: Int): [Comment!]!
+}
+
+type Video implements Node & Content {
+  id: ID!
+  title: String!
+  author: User!
+  durationSec: Int!
+}
+
+type Comment implements Node {
+  id: ID!
+  text: String!
+  author: User!
+  post: Post!
+  replies: [Comment!]!
+}
+
+union SearchResult = User | Post | Video
+
+enum Role {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SortDirection {
+  ASC
+  DESC
+}
+
+enum PostOrderField {
+  CREATED_AT
+  TITLE
+}
+
+input PostOrder {
+  field: PostOrderField!
+  direction: SortDirection = ASC
+}
+
+input PostFilter {
+  status: [PostStatus!]
+  authorId: ID
+  tags: [String!]
+  and: [PostFilter!]
+}
+
+input PostMetaInput {
+  seoTitle: String
+  priority: Int
+}
+
+input CreatePostInput {
+  title: String!
+  body: String!
+  tags: [String!]
+  status: PostStatus = DRAFT
+  meta: PostMetaInput
+}
+
+type Query {
+  me: User
+  user(id: ID!): User
+  node(id: ID!): Node
+  search(text: String!, limit: Int): [SearchResult!]!
+  posts(filter: PostFilter, order: PostOrder): [Post!]!
+  feed: [Content!]!
+}
+
+type Mutation {
+  createPost(input: CreatePostInput!): Post!
+  deletePost(id: ID!): Boolean!
+  updateRole(userId: ID!, role: Role!): User!
+}
+
+type Subscription {
+  postAdded(status: PostStatus): Post!
+  commentAdded(postId: ID!): Comment!
+}
+
+directive @tag(name: String) on FIELD | INLINE_FRAGMENT
