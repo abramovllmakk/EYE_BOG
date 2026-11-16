@@ -34,6 +34,8 @@ coverage:
   needs: [api-tests]
   script:
     - gqlcov report "$GQLCOV_RUN_ID" --format markdown --compare-branch main > coverage.md
+    # План покрытия: готовые запросы для непокрытых полей прямо в комментарии к MR.
+    - gqlcov gaps "$GQLCOV_RUN_ID" --format markdown --limit 10 >> coverage.md
     - gqlcov report "$GQLCOV_RUN_ID" --format json > coverage.json
     - gqlcov report "$GQLCOV_RUN_ID" --format csv > coverage.csv
     - |

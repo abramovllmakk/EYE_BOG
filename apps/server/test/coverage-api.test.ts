@@ -478,3 +478,162 @@ describe('coverage by team', () => {
     expect(filtered.json).toEqual([]);
   });
 });
+
+describe('coverage plan', () => {
+  const GAPS = { 'x-coverage-run-id': 'gaps-1' };
+  interface Plan {
+    fields: { percent: number };
+    projected: number;
+    unreachable: string[];
+    suggestions: {
+      id: string;
+      operationType: string;
+      query: string;
+      variables: Record<string, unknown>;
+      fields: string[];
+      gain: string[];
+    }[];
+  }
+
+  it('suggests queries that, replayed through the proxy, close every reachable gap', async () => {
+    await h.gql({ query: '{ viewer { id name } }' }, GAPS);
+    await h.app.pipeline.idle();
+    const before = await h.api<Plan>('GET', '/api/runs/gaps-1/gaps');
+    expect(before.status).toBe(200);
+    expect(before.json.suggestions.length).toBeGreaterThan(3);
+    expect(before.json.projected).toBeGreaterThan(before.json.fields.percent);
+
+    // Subscriptions need a WebSocket; over plain HTTP the proxy would wait for the event stream.
+    // Mutations run with placeholder ids ("1") may fail on the backend: their coverage is then
+    // (correctly) not counted, so they are expected to stay in the plan.
+    const subs = before.json.suggestions.filter((s) => s.operationType === 'subscription');
+    const rejected: typeof subs = [];
+    for (const s of before.json.suggestions) {
+      if (s.operationType === 'subscription') continue;
+      const res = await h.gql({ query: s.query, variables: s.variables }, GAPS);
+      const body = JSON.parse(res.text) as { data?: unknown; errors?: unknown[] };
+      if (body.errors && body.data == null) rejected.push(s);
+    }
+    await h.app.pipeline.idle();
+    expect(rejected.every((s) => s.operationType === 'mutation')).toBe(true);
+    expect(rejected.length).toBeLessThan(before.json.suggestions.length / 2);
+
+    const summary = await h.api<{
+      summary: { fields: { percent: number } };
+      uncovered: { fields: string[] };
+    }>('GET', '/api/runs/gaps-1/summary');
+    const notSent = new Set([...subs, ...rejected].flatMap((s) => s.fields));
+    expect(summary.json.uncovered.fields.filter((f) => !notSent.has(f)).sort()).toEqual(
+      before.json.unreachable,
+    );
+    const after = await h.api<Plan>('GET', '/api/runs/gaps-1/gaps');
+    const left = new Set([...subs, ...rejected].map((s) => s.id));
+    expect(after.json.suggestions.every((s) => left.has(s.id))).toBe(true);
+  });
+
+  it('limits suggestions and 404s for unknown runs', async () => {
+    const limited = await h.api<Plan>('GET', '/api/runs/cov-1/gaps?limit=1');
+    expect(limited.json.suggestions).toHaveLength(1);
+    expect((await h.api('GET', '/api/runs/nope/gaps')).status).toBe(404);
+  });
+});
+
+describe('test impact', () => {
+  it('reports unique fields, redundant tests and the minimal set of the run', async () => {
+    const { status, json } = await h.api<{
+      tests: {
+        testKey: string;
+        unique: string[];
+        redundant: boolean;
+        minimalRank: number | null;
+      }[];
+      minimalSet: { testKeys: string[]; cumulative: number[] };
+      coveredFields: number;
+    }>('GET', '/api/runs/cov-1/impact');
+    expect(status).toBe(200);
+    const viewer = json.tests.find((t) => t.testKey === 'profile::viewer')!;
+    expect(viewer.unique).toEqual(expect.arrayContaining(['Query.viewer', 'User.role']));
+    expect(json.minimalSet.cumulative.at(-1)).toBe(json.coveredFields);
+    expect(json.tests.filter((t) => t.minimalRank !== null)).toHaveLength(
+      json.minimalSet.testKeys.length,
+    );
+    expect((await h.api('GET', '/api/runs/nope/impact')).status).toBe(404);
+  });
+});
+
+describe('historical runs', () => {
+  it('accepts a start time in the past and ignores one in the future', async () => {
+    const past = Date.parse('2026-01-15T10:00:00Z');
+    const a = await h.api<{ id: string; startedAt: number }>('POST', '/api/runs', {
+      id: 'hist-1',
+      branch: 'main',
+      startedAt: '2026-01-15T10:00:00Z',
+    });
+    expect(a.json.startedAt).toBe(past);
+    const before = Date.now();
+    const b = await h.api<{ startedAt: number }>('POST', '/api/runs', {
+      id: 'hist-2',
+      startedAt: String(Date.now() + 86_400_000),
+    });
+    expect(b.json.startedAt).toBeGreaterThanOrEqual(before);
+    const c = await h.api<{ startedAt: number }>('POST', '/api/runs', {
+      id: 'hist-3',
+      startedAt: past,
+    });
+    expect(c.json.startedAt).toBe(past);
+    await h.api('POST', '/api/runs/hist-3/finish');
+    expect((await h.api('POST', '/api/runs', { startedAt: 'not a date' })).status).toBe(400);
+    await h.api('POST', '/api/runs/hist-1/finish');
+    await h.api('POST', '/api/runs/hist-2/finish');
+  });
+});
+
+describe('insights', () => {
+  it('lists untested mutations and unused arguments of the run', async () => {
+    const { status, json } = await h.api<{
+      untestedMutations: string[];
+      unusedArguments: string[];
+    }>('GET', '/api/runs/cov-1/insights');
+    expect(status).toBe(200);
+    expect(json.untestedMutations.length).toBeGreaterThan(0);
+    expect(json.untestedMutations.every((c) => c.startsWith('Mutation.'))).toBe(true);
+    expect((await h.api('GET', '/api/runs/nope/insights')).status).toBe(404);
+  });
+});
+
+describe('html report', () => {
+  it('renders a self-contained report with signals, impact and plan', async () => {
+    const res = await request(`${h.adminUrl}/api/runs/cov-1/export?format=html`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.headers['content-disposition']).toContain('coverage-cov-1.html');
+    const body = await res.body.text();
+    expect(body).toContain('<h2>Вклад тестов</h2>');
+    expect(body).toContain('<h2>План покрытия</h2>');
+    expect(body).toMatch(/мутаци[яий] без тестов/);
+    expect(body).not.toMatch(/<script|https?:\/\/(?!localhost)/);
+  });
+});
+
+describe('failed backend responses', () => {
+  it('logs a request the backend failed but does not count its coverage', async () => {
+    const RUN = { 'x-coverage-run-id': 'fail-1', 'x-test-name': 'broken update' };
+    // updatePost returns Post! and throws for an unknown id: errors and data: null.
+    await h.gql({ query: 'mutation { updatePost(id: "nope", input: {}) { id title } }' }, RUN);
+    await h.gql({ query: '{ viewer { id } }' }, { ...RUN, 'x-test-name': 'viewer' });
+    await h.app.pipeline.idle();
+    const { json } = await h.api<{ uncovered: { fields: string[] } }>(
+      'GET',
+      '/api/runs/fail-1/summary',
+    );
+    expect(json.uncovered.fields).toContain('Mutation.updatePost');
+    expect(json.uncovered.fields).not.toContain('Query.viewer');
+    const ops = await h.api<{
+      items: { testName: string; hasErrors: boolean; errors: string[]; fields: string[] }[];
+    }>('GET', '/api/runs/fail-1/operations');
+    const failed = ops.json.items.find((o) => o.testName === 'broken update')!;
+    expect(failed.hasErrors).toBe(true);
+    expect(failed.fields).toEqual([]);
+    expect(failed.errors.join(' ')).toMatch(/coverage not counted/);
+  });
+});

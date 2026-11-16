@@ -28,7 +28,7 @@ type User implements Node {
   name: String!
   email: String
   role: Role!
-  bio: String
+  bio: String @deprecated(reason: "Moved to the profile service")
   avatarUrl(size: Int = 64): String!
   posts(first: Int = 10, status: PostStatus): [Post!]!
   videos: [Video!]!
@@ -51,7 +51,7 @@ type Post implements Node & Content {
   publishedAt: String
   status: PostStatus!
   tags: [Tag!]!
-  likes: Int!
+  likes: Int! @deprecated(reason: "Use reactions; likes will be removed in v3")
   comments(first: Int = 10, order: SortOrder = NEWEST): CommentConnection!
 }
 

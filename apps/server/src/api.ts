@@ -4,11 +4,16 @@ import { z } from 'zod';
 import {
   diffSchemaModels,
   parseTestKey,
+  planGaps,
+  testImpact,
+  insights,
+  type GapPlan,
   type CoverageReport,
   type CoverageSummary,
   type TypeCoverage,
 } from '@gqlcov/core';
 import type { Config } from './config.js';
+import { renderHtmlReport } from './report-html.js';
 import { CoverageService, NotFoundError } from './coverage-service.js';
 import type { AnalysisPipeline } from './pipeline.js';
 import type { RunManager } from './runs.js';
@@ -53,6 +58,8 @@ const runFilters = z.object({
 });
 
 const runIdParams = z.object({ id: z.string().min(1) });
+
+const gapPlans = new WeakMap<CoverageReport, Map<number, GapPlan>>();
 
 export interface CompactSummary {
   fields: number;
@@ -307,8 +314,13 @@ export function registerApi(root: FastifyInstance, ctx: ApiContext): void {
             team: str,
             testSuite: str,
             labels: z.record(z.string(), z.string()).optional(),
+            startedAt: z
+              .preprocess((v) => (typeof v === 'number' ? String(v) : v), dateParam)
+              .describe(
+                'Start time in the past (ISO date or epoch ms) to import historical runs; defaults to now',
+              ),
           })
-          .default({}),
+          .default({ startedAt: undefined }),
       },
     },
     async (req, reply) => {
@@ -357,6 +369,67 @@ export function registerApi(root: FastifyInstance, ctx: ApiContext): void {
         summary: rc.report.summary,
         uncovered: rc.report.uncovered,
       };
+    },
+  );
+
+  app.get(
+    '/api/runs/:id/gaps',
+    {
+      schema: {
+        tags: ['coverage'],
+        summary:
+          'Coverage plan: ready-to-run queries that cover the uncovered fields, best first, with projected coverage',
+        params: runIdParams,
+        querystring: z.object({
+          testSuite: str,
+          limit: z.coerce.number().int().min(1).max(500).default(200),
+        }),
+      },
+    },
+    async (req) => {
+      const rc = await coverage.coverage(req.params.id, { testSuite: req.query.testSuite });
+      // Reports are cached per run data version, so the plan can be memoised on the report.
+      let byLimit = gapPlans.get(rc.report);
+      if (!byLimit) gapPlans.set(rc.report, (byLimit = new Map()));
+      let plan = byLimit.get(req.query.limit);
+      if (!plan)
+        byLimit.set(
+          req.query.limit,
+          (plan = planGaps(rc.schema.model, rc.report, { limit: req.query.limit })),
+        );
+      return plan;
+    },
+  );
+
+  app.get(
+    '/api/runs/:id/impact',
+    {
+      schema: {
+        tags: ['coverage'],
+        summary:
+          'Test impact: fields per test, fields only this test covers, redundant tests and the minimal test set',
+        params: runIdParams,
+      },
+    },
+    async (req) => {
+      const rc = await coverage.coverage(req.params.id);
+      return testImpact(rc.data, rc.report);
+    },
+  );
+
+  app.get(
+    '/api/runs/:id/insights',
+    {
+      schema: {
+        tags: ['coverage'],
+        summary:
+          'Risk signals: deprecated fields still used, untested mutations and subscriptions, conditional-only fields, untouched types, unused arguments',
+        params: runIdParams,
+      },
+    },
+    async (req) => {
+      const rc = await coverage.coverage(req.params.id);
+      return insights(rc.schema.model, rc.report);
     },
   );
 
@@ -599,14 +672,27 @@ export function registerApi(root: FastifyInstance, ctx: ApiContext): void {
     {
       schema: {
         tags: ['coverage'],
-        summary: 'Export coverage as JSON or CSV',
+        summary:
+          'Export coverage as JSON, CSV or a self-contained HTML report (summary, risk signals, test impact, coverage plan)',
         params: runIdParams,
-        querystring: z.object({ format: z.enum(['json', 'csv']).default('json') }),
+        querystring: z.object({ format: z.enum(['json', 'csv', 'html']).default('json') }),
       },
     },
     async (req, reply) => {
       const rc = await coverage.coverage(req.params.id);
       const name = `coverage-${req.params.id}`;
+      if (req.query.format === 'html') {
+        reply
+          .header('content-type', 'text/html; charset=utf-8')
+          .header('content-disposition', `attachment; filename="${name}.html"`);
+        return renderHtmlReport({
+          run: rc.run,
+          report: rc.report,
+          plan: planGaps(rc.schema.model, rc.report, { limit: 200 }),
+          insights: insights(rc.schema.model, rc.report),
+          impact: testImpact(rc.data, rc.report),
+        });
+      }
       if (req.query.format === 'json') {
         reply.header('content-disposition', `attachment; filename="${name}.json"`);
         return {

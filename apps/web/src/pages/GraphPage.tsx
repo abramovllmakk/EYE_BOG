@@ -9,13 +9,22 @@ import {
   type Edge,
   type NodeMouseHandler,
 } from '@xyflow/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { NeedRun } from '../components/Layout';
+import { GapQuery } from '../components/GapQuery';
 import { TypeCard, type TypeNode } from '../components/TypeCard';
 import { Empty, ErrorBox, Legend, Loading, Select, Toggle, Bar, StatusDot } from '../components/ui';
-import { api, type CoverageSummary, type SchemaModel, type TypeCoverage } from '../lib/api';
-import { pct, statusText } from '../lib/format';
+import {
+  api,
+  type CoverageSummary,
+  type ImpactReport,
+  type SchemaModel,
+  type TypeCoverage,
+} from '../lib/api';
+import { pct, plural, statusText } from '../lib/format';
+import { LIVE_INTERVAL_MS, useRunLive } from '../lib/live';
+import { suggestionsFor, usePlan } from '../lib/plan';
 import { buildGraph, CARD_WIDTH, cardHeight, layout, type RootChoice } from '../lib/graph';
 import { useBoolParam, useParam, useRunLink } from '../lib/url';
 
@@ -29,10 +38,14 @@ const edgeColor: Record<string, string> = {
 
 function SidePanel({ type, onClose }: { type: TypeCoverage; onClose: () => void }) {
   const link = useRunLink();
+  const [run] = useParam('run');
+  const { plan, proxyUrl } = usePlan(run);
+  const suggestion =
+    type.status !== 'covered' ? suggestionsFor(plan.data, type.name)[0] : undefined;
   const items = type.fields.length ? type.fields : type.values;
   return (
     <aside
-      className="absolute right-0 top-0 z-10 flex h-full w-80 flex-col border-l border-line bg-surface"
+      className="absolute right-0 top-0 z-10 flex h-full w-96 max-w-full flex-col border-l border-line bg-surface"
       aria-label={`Тип ${type.name}`}
     >
       <div className="flex items-start gap-2 border-b border-line p-4">
@@ -42,7 +55,7 @@ function SidePanel({ type, onClose }: { type: TypeCoverage; onClose: () => void 
             {statusText[type.status]}, {type.ratio.covered} из {type.ratio.total} (
             {pct(type.ratio.percent)})
           </div>
-          <Bar value={type.ratio.percent} className="mt-2" />
+          <Bar value={type.ratio.percent} className="mt-2" mode="status" />
         </div>
         <button
           type="button"
@@ -53,31 +66,44 @@ function SidePanel({ type, onClose }: { type: TypeCoverage; onClose: () => void 
           ✕
         </button>
       </div>
-      <ul className="flex-1 overflow-auto p-2">
-        {items.map((f) => {
-          const status = 'status' in f ? f.status : f.used ? 'covered' : 'uncovered';
-          return (
-            <li
-              key={f.coordinate}
-              className="flex items-center gap-2 rounded px-2 py-1 hover:bg-surface-2"
-            >
-              <StatusDot status={status} />
-              {'status' in f ? (
-                <Link to={link(`/fields/${f.coordinate}`)} className="truncate hover:underline">
-                  {f.name}
-                </Link>
-              ) : (
-                <span className="truncate">{f.name}</span>
-              )}
-              <span className="ml-auto tabular-nums text-muted">{f.requests || ''}</span>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="flex-1 overflow-auto">
+        <ul className="p-2">
+          {items.map((f) => {
+            const status = 'status' in f ? f.status : f.used ? 'covered' : 'uncovered';
+            return (
+              <li
+                key={f.coordinate}
+                className="flex items-center gap-2 rounded px-2 py-1 hover:bg-surface-2"
+              >
+                <StatusDot status={status} />
+                {'status' in f ? (
+                  <Link to={link(`/fields/${f.coordinate}`)} className="truncate hover:underline">
+                    {f.name}
+                  </Link>
+                ) : (
+                  <span className="truncate">{f.name}</span>
+                )}
+                <span className="ml-auto tabular-nums text-muted">{f.requests || ''}</span>
+              </li>
+            );
+          })}
+        </ul>
+        {suggestion && (
+          <section className="border-t border-line p-3">
+            <h3 className="mb-2 font-semibold">
+              Как покрыть{' '}
+              <span className="font-normal text-muted tabular-nums">
+                +{suggestion.gain.length} {plural(suggestion.gain.length, 'поле', 'поля', 'полей')}
+              </span>
+            </h3>
+            <GapQuery s={suggestion} proxyUrl={proxyUrl} compact />
+          </section>
+        )}
+      </div>
       <div className="border-t border-line p-3">
         <Link
           to={link(`/types/${type.name}`)}
-          className="block rounded-md bg-accent px-3 py-2 text-center text-white"
+          className="block rounded-md bg-accent px-3 py-2 text-center font-medium text-on-accent"
         >
           Открыть детализацию типа
         </Link>
@@ -90,11 +116,33 @@ function Canvas({
   model,
   types,
   summary,
+  live,
+  fresh,
 }: {
   model: SchemaModel;
   types: TypeCoverage[];
   summary: CoverageSummary;
+  live: boolean;
+  fresh: Set<string>;
 }) {
+  const [run] = useParam('run');
+  const [testKey, setTestKey] = useParam('test');
+  const impact = useQuery({
+    queryKey: ['impact', run],
+    queryFn: () => api<ImpactReport>(`/api/runs/${encodeURIComponent(run)}/impact`),
+  });
+  const footprint = useQuery({
+    queryKey: ['test-fields', run, testKey],
+    queryFn: () =>
+      api<{ coordinate: string }[]>(
+        `/api/runs/${encodeURIComponent(run)}/tests/${encodeURIComponent(testKey)}/fields`,
+      ),
+    enabled: !!testKey,
+  });
+  const trace = useMemo(
+    () => (testKey && footprint.data ? new Set(footprint.data.map((f) => f.coordinate)) : null),
+    [testKey, footprint.data],
+  );
   const [root, setRoot] = useParam('root', 'query');
   const [focus, setFocus] = useParam('focus');
   const [depth, setDepth] = useParam('depth', '2');
@@ -105,6 +153,7 @@ function Canvas({
   const [showEnums, setShowEnums] = useBoolParam('enums');
   const [showInputs, setShowInputs] = useBoolParam('inputs');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }> | null>(null);
   const [layoutError, setLayoutError] = useState<string | null>(null);
   const flow = useReactFlow();
@@ -125,10 +174,21 @@ function Canvas({
     [model, types, root, focus, depth, showScalars, showEnums, showInputs, onlyUncovered, expanded],
   );
 
+  // Re-run the (expensive) ELK layout only when the graph structure changes, not on every
+  // coverage refresh: live runs update colours and counters in place without moving cards.
+  const structure = useMemo(
+    () =>
+      [...graph.cards.entries()].map(([id, c]) => `${id}:${c.rows.length}:${c.hidden}`).join(',') +
+      '|' +
+      graph.edges.map((e) => e.id).join(','),
+    [graph],
+  );
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
   useEffect(() => {
     let cancelled = false;
     setLayoutError(null);
-    layout(graph)
+    layout(graphRef.current)
       .then((p) => {
         if (cancelled) return;
         setPositions(p);
@@ -138,7 +198,7 @@ function Canvas({
     return () => {
       cancelled = true;
     };
-  }, [graph, flow]);
+  }, [structure, flow]);
 
   const q = search.trim().toLowerCase();
   const nodes: TypeNode[] = useMemo(
@@ -153,6 +213,8 @@ function Canvas({
             data: {
               ...data,
               selected: id === selected,
+              trace,
+              fresh,
               matched:
                 !!q &&
                 (id.toLowerCase().includes(q) ||
@@ -161,7 +223,7 @@ function Canvas({
             },
           }))
         : [],
-    [graph, positions, selected, q],
+    [graph, positions, selected, q, trace, fresh],
   );
   const edges: Edge[] = useMemo(
     () =>
@@ -176,10 +238,16 @@ function Canvas({
           stroke: edgeColor[e.status],
           strokeWidth: e.status === 'covered' ? 1.6 : 1,
           strokeDasharray: e.kind === 'implements' ? '4 4' : undefined,
-          opacity: e.status === 'uncovered' ? 0.6 : 1,
+          opacity: trace
+            ? trace.has(e.id.replace('.f:', '.'))
+              ? 1
+              : 0.07
+            : e.status === 'uncovered'
+              ? 0.6
+              : 1,
         },
       })),
-    [graph],
+    [graph, trace],
   );
 
   const onNodeClick: NodeMouseHandler = (_, node) =>
@@ -189,7 +257,20 @@ function Canvas({
 
   return (
     <div className="relative h-full">
-      <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-end gap-3 rounded-lg border border-line bg-surface/95 p-3 shadow-sm">
+      <button
+        type="button"
+        onClick={() => setFiltersOpen((v) => !v)}
+        aria-expanded={filtersOpen}
+        className="absolute left-3 top-3 z-20 flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 shadow-sm md:hidden"
+      >
+        {filtersOpen ? 'Скрыть фильтры' : 'Фильтры карты'}
+        {(testKey || onlyUncovered || focus) && (
+          <span className="size-2 rounded-full bg-accent" aria-label="фильтры включены" />
+        )}
+      </button>
+      <div
+        className={`${filtersOpen ? 'flex' : 'hidden'} absolute left-3 top-14 z-10 max-w-[calc(100%-1.5rem)] flex-wrap items-end gap-3 rounded-lg border border-line bg-surface/95 p-3 shadow-sm md:top-3 md:flex`}
+      >
         <Select
           label="Корень"
           value={root}
@@ -251,6 +332,18 @@ function Canvas({
             </button>
           </div>
         )}
+        <Select
+          label="След теста"
+          value={testKey}
+          onChange={setTestKey}
+          placeholder="все тесты"
+          options={(impact.data?.tests ?? [])
+            .filter((t) => !t.empty)
+            .map((t) => ({
+              value: t.testKey,
+              label: `${t.suite ? `${t.suite} / ` : ''}${t.unnamed ? 'без имени' : t.name} (${t.fields})`,
+            }))}
+        />
         <div className="flex flex-col gap-1">
           <Toggle label="Только непокрытое" checked={onlyUncovered} onChange={setOnlyUncovered} />
           <div className="flex gap-3">
@@ -262,6 +355,25 @@ function Canvas({
       </div>
 
       <div className="absolute bottom-3 left-14 z-10 flex flex-col gap-1 rounded-lg border border-line bg-surface/95 px-3 py-2">
+        {live && (
+          <div className="flex items-center gap-2 text-xs text-covered" role="status">
+            <span className="live-dot" aria-hidden />
+            Прогон идёт: карта обновляется сама, новые поля подсвечиваются
+          </div>
+        )}
+        {trace && (
+          <div className="text-xs">
+            След теста: затронуто <b className="tabular-nums">{trace.size}</b> полей, остальное
+            приглушено.{' '}
+            <button
+              type="button"
+              className="text-accent hover:underline"
+              onClick={() => setTestKey(null)}
+            >
+              Показать все
+            </button>
+          </div>
+        )}
         <Legend />
         <div className="text-xs text-muted tabular-nums">
           Поля {pct(summary.fields.percent)}, типы {pct(summary.types.percent)}, операции{' '}
@@ -300,13 +412,14 @@ function Canvas({
         <Background gap={24} size={1} color="var(--line)" />
         <Controls showInteractive={false} position="bottom-left" />
         <MiniMap
+          className="max-md:!hidden"
           pannable
           zoomable
           position="bottom-right"
           nodeClassName={(n) =>
             `mm-${(n.data as TypeNode['data']).coverage?.status ?? 'uncovered'}`
           }
-          style={{ marginRight: selectedType ? 336 : 12 }}
+          style={{ marginRight: selectedType ? 400 : 12 }}
         />
       </ReactFlow>
       {selectedType && <SidePanel type={selectedType} onClose={() => setSelected(null)} />}
@@ -316,6 +429,7 @@ function Canvas({
 
 export function GraphPage() {
   const [run] = useParam('run');
+  const live = useRunLive(run);
   const schema = useQuery({
     queryKey: ['schema', run],
     queryFn: () => api<SchemaModel>(`/api/runs/${run}/schema`),
@@ -326,13 +440,42 @@ export function GraphPage() {
     queryFn: () =>
       api<{ summary: CoverageSummary; types: TypeCoverage[] }>(`/api/runs/${run}/coverage`),
     enabled: !!run,
+    refetchInterval: live ? LIVE_INTERVAL_MS : false,
   });
+  const fresh = useFreshFields(cov.data?.types, run);
   if (!run) return <NeedRun />;
   if (schema.error || cov.error) return <ErrorBox error={schema.error ?? cov.error} />;
   if (!schema.data || !cov.data) return <Loading what="схему и покрытие" />;
   return (
     <ReactFlowProvider>
-      <Canvas model={schema.data} types={cov.data.types} summary={cov.data.summary} />
+      <Canvas
+        model={schema.data}
+        types={cov.data.types}
+        summary={cov.data.summary}
+        live={live}
+        fresh={fresh}
+      />
     </ReactFlowProvider>
   );
+}
+
+/** Fields that became covered since the previous refresh of the same run (for a short glow). */
+function useFreshFields(types: TypeCoverage[] | undefined, run: string): Set<string> {
+  const prev = useRef<{ run: string; covered: Set<string> } | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!types) return;
+    const covered = new Set<string>();
+    for (const t of types)
+      for (const f of t.fields) if (f.status === 'covered') covered.add(f.coordinate);
+    const before = prev.current?.run === run ? prev.current.covered : null;
+    prev.current = { run, covered };
+    if (!before) return;
+    const added = new Set([...covered].filter((c) => !before.has(c)));
+    if (!added.size) return;
+    setFresh(added);
+    const t = window.setTimeout(() => setFresh(new Set()), 4000);
+    return () => window.clearTimeout(t);
+  }, [types, run]);
+  return fresh;
 }

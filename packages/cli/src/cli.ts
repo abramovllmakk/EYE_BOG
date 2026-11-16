@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 /** Minimal shapes of the REST API used by the CLI. */
@@ -43,6 +44,24 @@ interface CompareResponse {
   schemaDiff: { added: string[]; removed: string[] } | null;
 }
 
+interface GapPlan {
+  fields: Ratio;
+  projected: number;
+  unreachable: string[];
+  suggestions: {
+    id: string;
+    target: string;
+    operationType: string;
+    operationName: string;
+    path: string[];
+    fields: string[];
+    marginalGain: number;
+    coverageAfter: number;
+    query: string;
+    variables: Record<string, unknown>;
+  }[];
+}
+
 export interface Io {
   out: (s: string) => void;
   err: (s: string) => void;
@@ -62,8 +81,12 @@ Usage:
         Starts a run and prints its id (use: export GQLCOV_RUN_ID=$(gqlcov run start ...)).
   gqlcov run finish <runId> [--min-field-coverage P] [--min-operation-coverage P]
         Finishes the run, prints the summary; exit code 3 if coverage is below a threshold.
-  gqlcov report <runId> [--format json|csv|markdown] [--compare BASE_RUN_ID | --compare-branch BRANCH]
+  gqlcov report <runId> [--format json|csv|html|markdown] [--compare BASE_RUN_ID | --compare-branch BRANCH]
+        html: self-contained report (summary, risk signals, test impact, plan) for CI artifacts.
         --compare-branch picks the latest finished run of BRANCH as the base (e.g. main).
+  gqlcov gaps <runId> [--format markdown|json|graphql] [--limit N] [--out DIR]
+        Coverage plan: ready-to-run queries for the uncovered fields, best first.
+        --out DIR writes <OperationName>.graphql + .variables.json per suggestion.
   gqlcov schema upload <file.graphql> [--target NAME]
 
 Options:
@@ -189,6 +212,43 @@ export function markdownReport(s: SummaryResponse, cmp?: CompareResponse): strin
   return lines.join('\n') + '\n';
 }
 
+export function gapsMarkdown(plan: GapPlan): string {
+  const lines = [
+    `## План покрытия`,
+    '',
+    plan.suggestions.length
+      ? `${plan.suggestions.length} запрос(ов) поднимут покрытие полей с **${plan.fields.percent}%** до **${plan.projected}%**.`
+      : `Непокрытых полей, достижимых из корня схемы, нет (покрытие полей ${plan.fields.percent}%).`,
+    '',
+  ];
+  if (plan.suggestions.length) {
+    lines.push('| # | Операция | Тип | Новых полей | Покрытие после |', '|---|---|---|---|---|');
+    plan.suggestions.forEach((s, i) =>
+      lines.push(
+        `| ${i + 1} | \`${s.operationName}\` (${s.operationType}) | ${s.target} | +${s.marginalGain} | ${s.coverageAfter}% |`,
+      ),
+    );
+    for (const s of plan.suggestions) {
+      lines.push(
+        '',
+        `### ${s.operationName}`,
+        '',
+        `Покрывает: ${s.fields.map((f) => `\`${f}\``).join(', ')}`,
+        '',
+      );
+      lines.push('```graphql', s.query, '```');
+      if (Object.keys(s.variables).length)
+        lines.push('', '```json', JSON.stringify(s.variables, null, 2), '```');
+    }
+  }
+  if (plan.unreachable.length)
+    lines.push(
+      '',
+      `Недостижимы из корня схемы: ${plan.unreachable.map((f) => `\`${f}\``).join(', ')}`,
+    );
+  return lines.join('\n');
+}
+
 export async function main(argv: string[], io: Io = defaultIo): Promise<number> {
   let parsed;
   try {
@@ -211,6 +271,8 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         'compare-branch': { type: 'string' },
         'min-field-coverage': { type: 'string' },
         'min-operation-coverage': { type: 'string' },
+        limit: { type: 'string' },
+        out: { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -279,12 +341,13 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
       const runId = sub;
       if (!runId) throw new CliError('report requires <runId>', 2);
       const id = encodeURIComponent(runId);
-      if (o.format === 'json' || o.format === 'csv') {
+      if (o.format === 'json' || o.format === 'csv' || o.format === 'html') {
         const body = await call<unknown>('GET', `/api/runs/${id}/export?format=${o.format}`);
         io.out(typeof body === 'string' ? body : JSON.stringify(body, null, 2));
         return 0;
       }
-      if (o.format !== 'markdown') throw new CliError('--format must be json, csv or markdown', 2);
+      if (o.format !== 'markdown')
+        throw new CliError('--format must be json, csv, html or markdown', 2);
       const s = await call<SummaryResponse>('GET', `/api/runs/${id}/summary`);
       let base = o.compare;
       if (!base && o['compare-branch']) {
@@ -303,6 +366,41 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
           )
         : undefined;
       io.out(markdownReport(s, cmp));
+      return 0;
+    }
+    if (cmd === 'gaps') {
+      const runId = sub;
+      if (!runId) throw new CliError('gaps requires <runId>', 2);
+      const format = o.format ?? 'markdown';
+      if (!['markdown', 'json', 'graphql'].includes(format))
+        throw new CliError('--format must be markdown, json or graphql', 2);
+      const limit = o.limit === undefined ? 200 : Number(o.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 500)
+        throw new CliError('--limit must be an integer between 1 and 500', 2);
+      const plan = await call<GapPlan>(
+        'GET',
+        `/api/runs/${encodeURIComponent(runId)}/gaps?limit=${limit}`,
+      );
+      if (o.out) {
+        await mkdir(o.out, { recursive: true });
+        for (const s of plan.suggestions) {
+          await writeFile(join(o.out, `${s.operationName}.graphql`), `${s.query}\n`);
+          if (Object.keys(s.variables).length)
+            await writeFile(
+              join(o.out, `${s.operationName}.variables.json`),
+              `${JSON.stringify(s.variables, null, 2)}\n`,
+            );
+        }
+        io.err(`${plan.suggestions.length} operation(s) written to ${o.out}`);
+      }
+      if (format === 'json') io.out(JSON.stringify(plan, null, 2));
+      else if (format === 'graphql')
+        io.out(
+          plan.suggestions
+            .map((s) => `# +${s.marginalGain} → ${s.coverageAfter}%\n${s.query}`)
+            .join('\n\n'),
+        );
+      else io.out(gapsMarkdown(plan));
       return 0;
     }
     if (cmd === 'schema' && sub === 'upload') {

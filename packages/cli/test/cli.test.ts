@@ -33,6 +33,26 @@ const summary = {
   uncovered: { fields: ['Mutation.follow'], operations: ['Mutation.follow'], types: [] },
 };
 
+const gapPlan = {
+  fields: ratio(61, 72),
+  projected: 62.5,
+  unreachable: ['Orphan.x'],
+  suggestions: [
+    {
+      id: 'root:Mutation.follow',
+      target: 'Mutation',
+      operationType: 'mutation',
+      operationName: 'CoverMutationFollow',
+      path: [],
+      fields: ['Mutation.follow'],
+      marginalGain: 1,
+      coverageAfter: 62.5,
+      query: 'mutation CoverMutationFollow($userId: ID!) {\n  follow(userId: $userId) { id }\n}',
+      variables: { userId: '1' },
+    },
+  ],
+};
+
 let server: Server;
 let url: string;
 const seen: { method: string; url: string; body: string; auth?: string }[] = [];
@@ -68,7 +88,13 @@ beforeAll(async () => {
         res.writeHead(200, { 'content-type': 'text/csv' });
         return res.end('coordinate,status\nUser.name,covered\n');
       }
+      if (req.url?.includes('format=html')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end('<!doctype html><h1>report</h1>');
+      }
       if (req.url?.includes('format=json')) return json(200, { summary: summary.summary });
+      if (req.url === '/api/runs/r1/gaps?limit=200' || req.url === '/api/runs/r1/gaps?limit=5')
+        return json(200, gapPlan);
       if (req.url?.startsWith('/api/schemas/upload'))
         return json(200, { snapshotId: 3, hash: 'abcdef1234567890', types: 12 });
       json(404, { message: 'nope' });
@@ -181,5 +207,38 @@ describe('gqlcov', () => {
     });
     expect((await run(['schema', 'upload', join(dir, 'missing')])).code).toBe(2);
     expect((await run(['schema', 'upload'])).code).toBe(2);
+  });
+
+  it('gaps prints the coverage plan and writes operation files', async () => {
+    const md = await run(['gaps', 'r1']);
+    expect(md.code).toBe(0);
+    expect(md.out).toContain('с **84.7%** до **62.5%**');
+    expect(md.out).toContain('```graphql\nmutation CoverMutationFollow');
+    expect(md.out).toContain('`Orphan.x`');
+    const gql = await run(['gaps', 'r1', '--format', 'graphql', '--limit', '5']);
+    expect(gql.out).toMatch(/^# \+1 → 62.5%\nmutation CoverMutationFollow/);
+    const json = await run(['gaps', 'r1', '--format', 'json']);
+    expect(JSON.parse(json.out).suggestions).toHaveLength(1);
+    const dir = mkdtempSync(join(tmpdir(), 'gqlcov-gaps-'));
+    const files = await run(['gaps', 'r1', '--out', dir]);
+    expect(files.err).toContain('1 operation(s) written');
+    const { readFileSync } = await import('node:fs');
+    expect(readFileSync(join(dir, 'CoverMutationFollow.graphql'), 'utf8')).toContain(
+      'follow(userId: $userId)',
+    );
+    expect(
+      JSON.parse(readFileSync(join(dir, 'CoverMutationFollow.variables.json'), 'utf8')),
+    ).toEqual({ userId: '1' });
+    expect((await run(['gaps', 'r1', '--format', 'xml'])).code).toBe(2);
+    expect((await run(['gaps', 'r1', '--limit', '0'])).code).toBe(2);
+    expect((await run(['gaps'])).code).toBe(2);
+  });
+
+  it('report --format html prints the self-contained report', async () => {
+    const r = await run(['report', 'r1', '--format', 'html']);
+    expect(r).toMatchObject({ code: 0, out: '<!doctype html><h1>report</h1>' });
+    expect((await run(['report', 'r1', '--format', 'pdf'])).err).toMatch(
+      /json, csv, html or markdown/,
+    );
   });
 });

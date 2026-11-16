@@ -5,3 +5,6 @@ export * from './schema-model.js';
 export * from './coverage.js';
 export * from './http.js';
 export * from './redact.js';
+export * from './gaps.js';
+export * from './impact.js';
+export * from './insights.js';
