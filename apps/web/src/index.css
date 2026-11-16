@@ -1,64 +1,70 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/golos-text';
+@import '@fontsource-variable/jetbrains-mono';
 @import '@xyflow/react/dist/style.css';
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 :root {
-  --bg: #eef1f4;
+  --bg: #f1f3f6;
   --surface: #ffffff;
-  --surface-2: #f6f8fa;
-  --ink: #1b2430;
-  --muted: #5b6675;
-  --line: #d3d9e0;
-  --accent: #3d4fd1;
-  --accent-soft: #e4e7fb;
-  --covered: #2f9e6e;
-  --covered-soft: #dcf1e7;
-  --partial: #d9a21b;
-  --partial-soft: #faefd2;
-  --uncovered: #9aa4b1;
-  --uncovered-soft: #eceff2;
+  --surface-2: #f5f7f9;
+  --ink: #161b22;
+  --muted: #5d6877;
+  --line: #d9dee5;
+  --accent: #2f55d4;
+  --accent-soft: #e3e9fb;
+  --on-accent: #ffffff;
+  --covered: #22895e;
+  --covered-soft: #d8efe4;
+  --partial: #c98a0c;
+  --partial-soft: #f8ecd0;
+  --uncovered: #98a2b0;
+  --uncovered-soft: #e9ecf0;
   --danger: #c2413a;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-sans:
+    'Golos Text Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #12161c;
-    --surface: #1a2029;
-    --surface-2: #202834;
-    --ink: #e4e9ef;
-    --muted: #97a2b0;
-    --line: #2b3441;
-    --accent: #8f9bff;
-    --accent-soft: #252b52;
-    --covered: #45c08b;
-    --covered-soft: #17362a;
-    --partial: #e8b53a;
-    --partial-soft: #3a2f12;
-    --uncovered: #6b7685;
-    --uncovered-soft: #232a34;
+    --bg: #0d1116;
+    --surface: #141a21;
+    --surface-2: #1b222b;
+    --ink: #e6ebf0;
+    --muted: #8d98a6;
+    --line: #252e39;
+    --accent: #7d9bff;
+    --accent-soft: #1f2a4d;
+    --on-accent: #0d1116;
+    --covered: #3fbf86;
+    --covered-soft: #12302a;
+    --partial: #e7b13c;
+    --partial-soft: #36290f;
+    --uncovered: #5f6b7a;
+    --uncovered-soft: #1f2630;
     --danger: #ef6d64;
     color-scheme: dark;
   }
 }
 :root[data-theme='dark'] {
-  --bg: #12161c;
-  --surface: #1a2029;
-  --surface-2: #202834;
-  --ink: #e4e9ef;
-  --muted: #97a2b0;
-  --line: #2b3441;
-  --accent: #8f9bff;
-  --accent-soft: #252b52;
-  --covered: #45c08b;
-  --covered-soft: #17362a;
-  --partial: #e8b53a;
-  --partial-soft: #3a2f12;
-  --uncovered: #6b7685;
-  --uncovered-soft: #232a34;
+  --bg: #0d1116;
+  --surface: #141a21;
+  --surface-2: #1b222b;
+  --ink: #e6ebf0;
+  --muted: #8d98a6;
+  --line: #252e39;
+  --accent: #7d9bff;
+  --accent-soft: #1f2a4d;
+  --on-accent: #0d1116;
+  --covered: #3fbf86;
+  --covered-soft: #12302a;
+  --partial: #e7b13c;
+  --partial-soft: #36290f;
+  --uncovered: #5f6b7a;
+  --uncovered-soft: #1f2630;
   --danger: #ef6d64;
   color-scheme: dark;
 }
@@ -72,6 +78,7 @@
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
   --color-covered: var(--covered);
   --color-covered-soft: var(--covered-soft);
   --color-partial: var(--partial);
@@ -94,7 +101,8 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.5;
+  font-feature-settings: 'tnum' 0;
   -webkit-font-smoothing: antialiased;
 }
 :focus-visible {
@@ -115,7 +123,43 @@ body {
   --xy-controls-button-color: var(--ink);
   --xy-controls-button-border-color: var(--line);
   --xy-edge-stroke: var(--line);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--bg) 70%, transparent);
+  --xy-minimap-mask-stroke-color: var(--line);
 }
+.react-flow__minimap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+/* Live run: a field that has just become covered glows for a moment. */
+@keyframes fresh-glow {
+  0% {
+    background: color-mix(in srgb, var(--covered) 55%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.fresh-row {
+  animation: fresh-glow 3.5s ease-out;
+}
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--covered);
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

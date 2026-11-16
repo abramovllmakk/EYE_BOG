@@ -1,4 +1,5 @@
 # Quick start:  docker compose up -d --build   then   docker compose run --rm traffic
+#               docker compose run --rm history   # two weeks of demo history for the dashboards
 # UI: http://localhost:4001   proxy for tests: http://localhost:4000/graphql   demo API: http://localhost:4100/graphql
 name: gqlcov
 
@@ -31,6 +32,17 @@ services:
       RUN_ID: ${RUN_ID:-}
       BRANCH: ${BRANCH:-main}
       ENVIRONMENT: ${ENVIRONMENT:-docker}
+    depends_on:
+      gqlcov: { condition: service_healthy }
+
+  # Two weeks of demo history (teams, branches, growing coverage): docker compose run --rm history
+  history:
+    build: { context: ., target: traffic }
+    profiles: [demo]
+    command: ['node', 'src/history.mjs']
+    environment:
+      PROXY_URL: http://gqlcov:4000/graphql
+      ADMIN_URL: http://gqlcov:4001
     depends_on:
       gqlcov: { condition: service_healthy }
 

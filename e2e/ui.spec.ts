@@ -70,3 +70,74 @@ test('table filters live in the URL', async ({ page }) => {
   await expect(page.getByRole('cell', { name: 'Mutation.follow' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Query.viewer' })).toHaveCount(0);
 });
+
+test('coverage plan: projection, ready queries and links from the map', async ({ page }) => {
+  await page.goto(`/plan?run=${RUN_ID}`);
+  await expect(page.getByRole('heading', { name: 'План покрытия' })).toBeVisible();
+  // The demo suite leaves 11 fields uncovered; the plan closes all of them.
+  await expect(page.getByText('Сейчас не покрыто 11 из 72 полей.')).toBeVisible();
+  await expect(page.getByRole('img', { name: /до 100%/ })).toBeVisible();
+  await expect(page.locator('pre code').first()).toContainText('query CoverVideo');
+
+  // Uncovered field page shows the query that would cover it.
+  await page.goto(`/fields/Mutation.follow?run=${RUN_ID}`);
+  await expect(page.getByText('Поле не покрыто. Запрос, который его покроет')).toBeVisible();
+  await expect(page.locator('pre code').first()).toContainText('follow(userId: $userId)');
+
+  // Map side panel offers the same plan for a partially covered type.
+  await page.goto(`/graph?run=${RUN_ID}&sel=Video`);
+  await expect(page.getByRole('heading', { name: /Как покрыть/ })).toBeVisible();
+});
+
+test('test impact: unique contribution, minimal set and the test footprint on the map', async ({
+  page,
+}) => {
+  await page.goto(`/tests?run=${RUN_ID}`);
+  await expect(page.getByRole('heading', { name: 'Вклад тестов' })).toBeVisible();
+  await expect(page.getByText(/из 18 тестов дают то же покрытие полей \(61 из 72\)/)).toBeVisible();
+  const row = page.getByRole('row').filter({ hasText: 'post with comments' });
+  await expect(row).toContainText('незаменим');
+  await row.getByRole('link', { name: 'след на карте' }).click();
+  await expect(page).toHaveURL(/\/graph\?.*test=content/);
+  await expect(page.getByText(/След теста: затронуто \d+ полей/)).toBeVisible();
+});
+
+test('compare preselects a base run and flags regressions', async ({ page }) => {
+  await page.goto(`/compare?run=${RUN_ID}`);
+  await expect(page).toHaveURL(/base=.*head=/);
+  await expect(page.getByRole('status').filter({ hasText: /Покрытие|Регрессия/ })).toBeVisible();
+});
+
+test('command palette jumps to a field; risk signals; run-scoped screens open the latest run', async ({
+  page,
+}) => {
+  await page.goto(`/table?run=${RUN_ID}`);
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Поиск' }).fill('totalLikes');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/fields\/UserStats\.totalLikes/);
+
+  await page.goto('/');
+  await expect(page.getByRole('region', { name: 'Сигналы риска' })).toContainText(
+    'мутации без тестов',
+  );
+
+  await page.goto('/plan');
+  await expect(page).toHaveURL(/run=/);
+  await expect(page.getByRole('heading', { name: 'План покрытия' })).toBeVisible();
+});
+
+test('connect page shows the proxy URL and stack snippets; HTML report downloads', async ({
+  page,
+}) => {
+  await page.goto('/connect');
+  await expect(page.getByRole('heading', { name: 'Подключение тестов' })).toBeVisible();
+  await expect(page.getByText(/:4000\/graphql/).first()).toBeVisible();
+  await page.getByRole('tab', { name: 'Playwright' }).click();
+  await expect(page.locator('pre code')).toContainText('extraHTTPHeaders');
+
+  await page.goto(`/table?run=${RUN_ID}`);
+  const download = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Отчёт HTML' }).click();
+  expect((await download).suggestedFilename()).toBe(`coverage-${RUN_ID}.html`);
+});

@@ -8,9 +8,19 @@ import type {
   TypeCoverage,
   TypeModel,
   FieldModel,
+  GapPlan,
+  GapSuggestion,
+  ImpactReport,
+  TestImpact,
+  Insights,
 } from '@gqlcov/core';
 
 export type {
+  Insights,
+  ImpactReport,
+  TestImpact,
+  GapPlan,
+  GapSuggestion,
   CoverageSummary,
   CoverageReport,
   FieldCoverage,

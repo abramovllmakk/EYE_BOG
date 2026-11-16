@@ -6,6 +6,9 @@ import { Layout } from './components/Layout';
 import { Empty } from './components/ui';
 import { FieldPage, OperationPage, TypePage } from './pages/DetailPages';
 import { GraphPage } from './pages/GraphPage';
+import { ConnectPage } from './pages/ConnectPage';
+import { PlanPage } from './pages/PlanPage';
+import { TestsPage } from './pages/TestsPage';
 import {
   ComparePage,
   HeatmapPage,
@@ -27,6 +30,9 @@ const router = createBrowserRouter([
       { index: true, element: <RunsPage /> },
       { path: 'graph', element: <GraphPage /> },
       { path: 'table', element: <TablePage /> },
+      { path: 'plan', element: <PlanPage /> },
+      { path: 'connect', element: <ConnectPage /> },
+      { path: 'tests', element: <TestsPage /> },
       { path: 'heatmap', element: <HeatmapPage /> },
       { path: 'operations', element: <OperationsPage /> },
       { path: 'operations/:id', element: <OperationPage /> },

@@ -21,7 +21,8 @@ import {
   Mono,
 } from '../components/ui';
 import { api, getToken, qs, type CoverageSummary, type TypeCoverage } from '../lib/api';
-import { statusText, type Status } from '../lib/format';
+import { plural, statusText, type Status } from '../lib/format';
+import { LIVE_INTERVAL_MS, useRunLive } from '../lib/live';
 import { useParam, useRunLink } from '../lib/url';
 
 interface FieldRow {
@@ -73,14 +74,7 @@ export function DepthCoverage({ s }: { s: CoverageSummary }) {
               />
             </span>
             <span className="tabular-nums">
-              {d.fields}{' '}
-              {d.fields % 10 === 1 && d.fields % 100 !== 11
-                ? 'поле'
-                : d.fields % 10 >= 2 &&
-                    d.fields % 10 <= 4 &&
-                    (d.fields % 100 < 12 || d.fields % 100 > 14)
-                  ? 'поля'
-                  : 'полей'}
+              {d.fields} {plural(d.fields, 'поле', 'поля', 'полей')}
             </span>
           </li>
         ))}
@@ -92,10 +86,18 @@ export function DepthCoverage({ s }: { s: CoverageSummary }) {
 /** Download links for the run export (token passed as query param when auth is on). */
 function ExportButtons({ run }: { run: string }) {
   const token = getToken();
-  const href = (format: 'csv' | 'json') =>
+  const href = (format: 'csv' | 'json' | 'html') =>
     `/api/runs/${encodeURIComponent(run)}/export${qs({ format, token })}`;
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
+      <a
+        href={href('html')}
+        download
+        className="rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent"
+        title="Один HTML-файл: сводка, сигналы риска, вклад тестов и план покрытия. Подходит для CI и печати."
+      >
+        Отчёт HTML
+      </a>
       <a
         href={href('csv')}
         download
@@ -170,8 +172,10 @@ export function TablePage() {
     queryFn: () => api<{ suite: string }[]>(`/api/runs/${run}/groups`),
     enabled: !!run,
   });
+  const live = useRunLive(run);
   const cov = useQuery({
     queryKey: ['coverage', run, suite],
+    refetchInterval: live ? LIVE_INTERVAL_MS : false,
     queryFn: () =>
       api<{ summary: CoverageSummary; types: TypeCoverage[] }>(
         `/api/runs/${run}/coverage${suite ? `?testSuite=${encodeURIComponent(suite)}` : ''}`,
@@ -209,6 +213,7 @@ export function TablePage() {
       (x) =>
         (!status || x.status === status) &&
         (!kind || x.kind === kind) &&
+        (!service || x.services.split(', ').includes(service)) &&
         (!q || x.coordinate.toLowerCase().includes(q)),
     );
     if (view === 'top')
@@ -286,7 +291,7 @@ export function TablePage() {
   return (
     <div className="mx-auto max-w-7xl p-6">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="mr-auto text-xl font-semibold">Покрытие прогона</h1>
+        <h1 className="mr-auto text-xl font-semibold">Таблица покрытия</h1>
         <ExportButtons run={run} />
       </div>
       <Summary s={cov.data.summary} />

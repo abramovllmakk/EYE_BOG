@@ -12,6 +12,9 @@ import type { Metrics } from './metrics.js';
 import type { AnalysisPipeline, ProxyJob, Transport } from './pipeline.js';
 import type { RunMeta } from './runs.js';
 
+/** Response encodings the analysis worker can decode to inspect GraphQL errors. */
+export const INSPECTABLE_ENCODINGS = new Set(['identity', 'gzip', 'x-gzip', 'deflate', 'br']);
+
 /** RFC 7230 hop-by-hop headers (plus ones undici manages itself). */
 const HOP_BY_HOP = new Set([
   'connection',
@@ -218,6 +221,7 @@ export function registerProxyRoutes(app: FastifyInstance, ctx: ProxyContext): vo
     const tUp = performance.now();
     let status = 502;
     let responseBody: Buffer | undefined;
+    let responseEncoding: string | undefined;
     try {
       const upstream = await pools.get(target.name)!.request({
         path,
@@ -232,10 +236,15 @@ export function registerProxyRoutes(app: FastifyInstance, ctx: ProxyContext): vo
       res.writeHead(upstream.statusCode, responseHeaders(upstream.headers));
       const headerWork = performance.now() - tHeaders;
       const limit = config.queue.responseInspectLimitBytes;
+      // Compressed JSON (most real APIs gzip responses) is kept as-is and decoded by the analysis
+      // worker, off the hot path; unknown encodings are not inspected.
+      responseEncoding = header(upstream.headers as IncomingHttpHeaders, 'content-encoding')
+        ?.trim()
+        .toLowerCase();
       const inspect =
         method !== 'OPTIONS' &&
         isJsonType(header(upstream.headers as IncomingHttpHeaders, 'content-type')) &&
-        !upstream.headers['content-encoding'];
+        (!responseEncoding || INSPECTABLE_ENCODINGS.has(responseEncoding));
       const chunks: Buffer[] = [];
       let size = 0;
       if (inspect) {
@@ -297,6 +306,7 @@ export function registerProxyRoutes(app: FastifyInstance, ctx: ProxyContext): vo
         },
         httpStatus: status,
         responseBody,
+        responseEncoding: responseBody ? responseEncoding : undefined,
         latencyMs: Math.round((performance.now() - t0) * 100) / 100,
       };
       ctx.beforeEnqueue?.(job);

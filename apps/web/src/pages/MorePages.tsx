@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { NeedRun } from '../components/Layout';
 import { Bar, Empty, ErrorBox, Loading, Mono, Select, TextInput } from '../components/ui';
 import {
@@ -15,7 +15,7 @@ import {
   type TypeCoverage,
   type TeamCoverage,
 } from '../lib/api';
-import { dateTime, pct, runLabel } from '../lib/format';
+import { ANALYSIS_LABEL, dateTime, pct, plural, runLabel } from '../lib/format';
 import { useParam, useRunLink } from '../lib/url';
 import { OperationList } from './DetailPages';
 
@@ -25,6 +25,7 @@ export function OperationsPage() {
   const [status, setStatus] = useParam('status');
   const [search, setSearch] = useParam('q');
   const [page, setPage] = useParam('page', '0');
+  const link = useRunLink();
   const tests = useQuery({
     queryKey: ['tests', run],
     queryFn: () =>
@@ -53,28 +54,18 @@ export function OperationsPage() {
           label="Анализ"
           value={status}
           onChange={setStatus}
-          options={['valid', 'invalid', 'unresolved', 'no_schema']}
+          options={Object.entries(ANALYSIS_LABEL).map(([value, label]) => ({ value, label }))}
         />
       </div>
       {tests.data && tests.data.length > 0 && (
-        <details className="mt-4 rounded-lg border border-line bg-surface p-3">
-          <summary className="cursor-pointer font-medium">
-            Тесты прогона ({tests.data.length}): тест → число полей
-          </summary>
-          <ul className="mt-2 columns-2 text-sm">
-            {tests.data.map((t) => (
-              <li key={t.testKey}>
-                <button type="button" className="hover:underline" onClick={() => setTest(t.name)}>
-                  {t.suite && <span className="text-muted">{t.suite} / </span>}
-                  {t.name}
-                </button>{' '}
-                <span className="text-muted tabular-nums">
-                  {t.requests} запр., {t.fields} полей
-                </span>
-              </li>
-            ))}
-          </ul>
-        </details>
+        <p className="mt-3 text-muted">
+          {tests.data.length} {plural(tests.data.length, 'тест', 'теста', 'тестов')} в прогоне. Что
+          даёт каждый из них и какие дублируют друг друга, смотрите в разделе{' '}
+          <Link to={link('/tests')} className="text-accent hover:underline">
+            «Вклад тестов»
+          </Link>
+          .
+        </p>
       )}
       <div className="mt-4">
         {ops.error && <ErrorBox error={ops.error} />}
@@ -174,7 +165,7 @@ export function HeatmapPage() {
                       background: f.requests
                         ? `color-mix(in srgb, var(--accent) ${Math.round(15 + intensity(f.requests) * 85)}%, var(--surface))`
                         : 'var(--uncovered-soft)',
-                      color: intensity(f.requests) > 0.55 ? 'white' : 'var(--ink)',
+                      color: intensity(f.requests) > 0.55 ? 'var(--on-accent)' : 'var(--ink)',
                     }}
                   >
                     {f.name}
@@ -216,6 +207,28 @@ export function ComparePage() {
     value: r.id,
     label: `${runLabel(r)} (${dateTime(r.startedAt)})`,
   }));
+  // Sensible default: the selected run (or the newest one) against the latest earlier main run.
+  const [current] = useParam('run');
+  const [, setParams] = useSearchParams();
+  useEffect(() => {
+    if (base || head || !runs.data?.items.length) return;
+    const items = runs.data.items;
+    const h = items.find((r) => r.id === current) ?? items[0]!;
+    const b =
+      items.find((r) => r.id !== h.id && r.branch === 'main' && r.startedAt <= h.startedAt) ??
+      items.find((r) => r.id !== h.id && r.startedAt <= h.startedAt);
+    // One URL update: two separate setters in the same tick would overwrite each other.
+    if (b)
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('base', b.id);
+          next.set('head', h.id);
+          return next;
+        },
+        { replace: true },
+      );
+  }, [runs.data, base, head, current, setParams]);
   return (
     <div className="mx-auto max-w-6xl p-6">
       <div className="flex flex-wrap items-end gap-3">
@@ -243,6 +256,23 @@ export function ComparePage() {
       {cmp.error && <ErrorBox error={cmp.error} />}
       {cmp.data && (
         <>
+          <div
+            className={`mt-5 rounded-lg border p-4 ${cmp.data.lost.length ? 'border-danger/50 bg-danger/5' : 'border-covered/50 bg-covered-soft/40'}`}
+            role="status"
+          >
+            <div className="font-semibold">
+              {cmp.data.lost.length
+                ? `Регрессия покрытия: потеряно ${cmp.data.lost.length} ${plural(cmp.data.lost.length, 'поле', 'поля', 'полей')}`
+                : cmp.data.newlyCovered.length
+                  ? `Покрытие выросло: +${cmp.data.newlyCovered.length} ${plural(cmp.data.newlyCovered.length, 'поле', 'поля', 'полей')}, потерь нет`
+                  : 'Покрытие полей не изменилось'}
+            </div>
+            <div className="mt-1 text-muted">
+              Поля: {pct(cmp.data.base.summary.fields)} → {pct(cmp.data.head.summary.fields)}
+              {cmp.data.lost.length > 0 &&
+                '. Потерянные поля раньше проверялись тестами, а в новом прогоне нет: проверьте, не удалён ли тест.'}
+            </div>
+          </div>
           <div className="mt-5 overflow-x-auto rounded-lg border border-line bg-surface">
             <table className="w-full text-left tabular-nums">
               <thead className="border-b border-line text-xs text-muted">
@@ -264,8 +294,22 @@ export function ComparePage() {
                       <td
                         className={`px-3 py-1.5 font-medium ${d > 0 ? 'text-covered' : d < 0 ? 'text-danger' : 'text-muted'}`}
                       >
-                        {d > 0 ? '+' : ''}
-                        {d.toFixed(1)} п.п.
+                        <div className="flex items-center gap-3">
+                          <span className="w-20">
+                            {d > 0 ? '+' : ''}
+                            {d.toFixed(1)} п.п.
+                          </span>
+                          <span
+                            className="relative h-1.5 w-40 rounded-full bg-uncovered-soft"
+                            aria-hidden
+                          >
+                            <span className="absolute inset-y-0 left-1/2 w-px bg-line" />
+                            <span
+                              className={`absolute inset-y-0 rounded-full ${d >= 0 ? 'left-1/2 bg-covered' : 'right-1/2 bg-danger'}`}
+                              style={{ width: `${Math.min(Math.abs(d), 50)}%` }}
+                            />
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -350,9 +394,23 @@ export function TimelinePage() {
   const W = 900;
   const H = 280;
   const P = 36;
+  // X follows real time, so gaps between runs are visible.
+  const t0 = pts[0]?.startedAt ?? 0;
+  const span = Math.max((pts.at(-1)?.startedAt ?? 0) - t0, 1);
   const x = (i: number) =>
-    P + (pts.length < 2 ? (W - 2 * P) / 2 : (i / (pts.length - 1)) * (W - 2 * P));
+    P + (pts.length < 2 ? (W - 2 * P) / 2 : ((pts[i]!.startedAt - t0) / span) * (W - 2 * P));
   const y = (v: number) => H - P - (v / 100) * (H - 2 * P);
+  const days = new Map<string, number>();
+  pts.forEach((p, i) => {
+    const d = new Date(p.startedAt).toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+    });
+    if (!days.has(d)) days.set(d, i);
+  });
+  const first = pts[0];
+  const last = pts.at(-1);
+  const delta = first && last ? last.summary.fields - first.summary.fields : 0;
   return (
     <div className="mx-auto max-w-6xl p-6">
       <div className="flex flex-wrap items-end gap-3">
@@ -378,8 +436,20 @@ export function TimelinePage() {
       </div>
       {tl.error && <ErrorBox error={tl.error} />}
       {tl.data && pts.length === 0 && <Empty title="Нет прогонов под фильтр" />}
+      {first && last && pts.length > 1 && (
+        <p className="mt-4 text-muted">
+          С {dateTime(first.startedAt)} по {dateTime(last.startedAt)} ({pts.length} прогонов)
+          покрытие полей изменилось с <b className="text-ink">{pct(first.summary.fields)}</b> до{' '}
+          <b className="text-ink">{pct(last.summary.fields)}</b>{' '}
+          <span className={delta > 0 ? 'text-covered' : delta < 0 ? 'text-danger' : ''}>
+            ({delta > 0 ? '+' : ''}
+            {delta.toFixed(1)} п.п.)
+          </span>
+          .
+        </p>
+      )}
       {pts.length > 0 && (
-        <figure className="mt-5 rounded-lg border border-line bg-surface p-4">
+        <figure className="mt-4 rounded-lg border border-line bg-surface p-4">
           <svg
             viewBox={`0 0 ${W} ${H}`}
             className="w-full"
@@ -393,6 +463,18 @@ export function TimelinePage() {
                   {v}%
                 </text>
               </g>
+            ))}
+            {[...days].map(([label, i]) => (
+              <text
+                key={label}
+                x={x(i)}
+                y={H - P + 18}
+                textAnchor="middle"
+                fontSize="11"
+                fill="var(--muted)"
+              >
+                {label}
+              </text>
             ))}
             {SERIES.map(([k, , color]) => (
               <g key={k}>

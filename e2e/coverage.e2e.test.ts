@@ -114,4 +114,27 @@ describe('end-to-end: demo tests → proxy → coverage', () => {
     });
     expect(await res.json()).toEqual({ data: { viewer: { name: 'Alice' } } });
   });
+
+  it('plans queries for exactly the uncovered fields and they run against the real API', async () => {
+    const plan = await api<{
+      projected: number;
+      unreachable: string[];
+      suggestions: { operationType: string; query: string; variables: object; gain: string[] }[];
+    }>(`/api/runs/${RUN_ID}/gaps`);
+    expect(plan.projected).toBe(100);
+    expect(plan.unreachable).toEqual([]);
+    expect([...new Set(plan.suggestions.flatMap((x) => x.gain))].sort()).toEqual(
+      [...s.uncovered.fields].sort(),
+    );
+    // Read-only suggestions are executable as-is against the demo API (no validation errors).
+    for (const sug of plan.suggestions.filter((x) => x.operationType === 'query')) {
+      const res = await fetch(PROXY_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-coverage-run-id': `${RUN_ID}-plan` },
+        body: JSON.stringify({ query: sug.query, variables: sug.variables }),
+      });
+      const body = (await res.json()) as { errors?: { message: string }[] };
+      expect(body.errors, sug.query).toBeUndefined();
+    }
+  });
 });

@@ -103,6 +103,11 @@ export const configSchema = z.object({
   coverage: z
     .object({
       propagateInterfaceCoverage: z.boolean().default(false),
+      /**
+       * Count requests the backend failed (HTTP 5xx, or a GraphQL response with errors and no data).
+       * Off by default: a field the server never resolved was not really exercised by the test.
+       */
+      countFailedResponses: z.boolean().default(false),
     })
     .prefault({}),
   storage: z

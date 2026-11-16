@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 import { NeedRun } from '../components/Layout';
+import { GapQuery } from '../components/GapQuery';
 import { QueryView } from '../components/QueryView';
 import { Bar, Empty, ErrorBox, Loading, Mono, StatusDot } from '../components/ui';
 import { api, type FieldDetail, type Operation, type TypeDetail } from '../lib/api';
-import { dateTime, pct, statusText } from '../lib/format';
+import { ANALYSIS_LABEL, dateTime, pct, plural, statusText } from '../lib/format';
+import { suggestionsFor, usePlan } from '../lib/plan';
 import { useParam, useRunLink } from '../lib/url';
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -13,6 +15,50 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
     {children}
   </section>
 );
+
+/** Ready-made query from the coverage plan that would cover this field (or type). */
+function HowToCover({
+  run,
+  typeName,
+  coordinate,
+}: {
+  run: string;
+  typeName: string;
+  coordinate?: string;
+}) {
+  const { plan, proxyUrl } = usePlan(run);
+  const s = suggestionsFor(plan.data, typeName, coordinate)[0];
+  const link = useRunLink();
+  if (!plan.data) return null;
+  if (!s)
+    return coordinate ? (
+      <Empty title="Поле ни разу не запрашивалось в этом прогоне">
+        {plan.data.unreachable.includes(coordinate)
+          ? 'До типа этого поля нельзя дойти ни от одного корня схемы.'
+          : `Добавьте тест, который выбирает ${coordinate}, и прогоните его через прокси.`}
+      </Empty>
+    ) : null;
+  return (
+    <section className="mt-6 rounded-lg border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <h2 className="text-sm font-semibold">
+          {coordinate
+            ? 'Поле не покрыто. Запрос, который его покроет'
+            : 'Как покрыть остальные поля'}
+        </h2>
+        <span className="text-xs text-muted tabular-nums">
+          +{s.gain.length} {plural(s.gain.length, 'поле', 'поля', 'полей')}
+        </span>
+        <Link to={link('/plan')} className="ml-auto text-accent hover:underline">
+          Весь план покрытия
+        </Link>
+      </div>
+      <div className="mt-3">
+        <GapQuery s={s} proxyUrl={proxyUrl} compact={!!coordinate} />
+      </div>
+    </section>
+  );
+}
 
 export function TypePage() {
   const { name } = useParams();
@@ -36,7 +82,7 @@ export function TypePage() {
           to={link('/graph', { focus: model.name })}
           className="ml-auto text-accent hover:underline"
         >
-          Показать на графе
+          Показать на карте
         </Link>
       </div>
       {model.description && <p className="mt-1 max-w-prose text-muted">{model.description}</p>}
@@ -48,7 +94,7 @@ export function TypePage() {
               {type.ratio.covered} из {type.ratio.total}, {pct(type.ratio.percent)}
             </span>
           </div>
-          <Bar value={type.ratio.percent} className="mt-1" />
+          <Bar value={type.ratio.percent} className="mt-1" mode="status" />
           <p className="mt-2 text-muted">
             Использовался в <span className="tabular-nums text-ink">{type.requests}</span> запросах
             {type.occurrences > 0 && <> ({type.occurrences} обращений к полям)</>}.
@@ -123,7 +169,7 @@ export function TypePage() {
                       ))}
                     </td>
                     <td className="px-3 py-2 text-xs text-muted">
-                      {(fieldTests[f.name] ?? []).join(', ')}
+                      {(fieldTests[f.name] ?? []).map((k) => k.replace('::', ' / ')).join(', ')}
                     </td>
                   </tr>
                 ))}
@@ -156,11 +202,12 @@ export function TypePage() {
           </ul>
         </Section>
       )}
+      {type && type.status !== 'covered' && <HowToCover run={run} typeName={model.name} />}
       {referencedBy.length > 0 && (
         <Section title="Ссылаются на тип">
-          <p className="text-muted">
+          <p className="flex flex-wrap gap-x-3 gap-y-1 text-muted">
             {referencedBy.map((r) => (
-              <Link key={r} to={link(`/fields/${r}`)} className="mr-3 hover:underline">
+              <Link key={r} to={link(`/fields/${r}`)} className="hover:underline">
                 <Mono>{r}</Mono>
               </Link>
             ))}
@@ -277,9 +324,7 @@ export function FieldPage() {
           </Section>
         </>
       ) : (
-        <Empty title="Поле ни разу не запрашивалось в этом прогоне">
-          Добавьте тест, который выбирает {d.coordinate}, и прогоните его через прокси.
-        </Empty>
+        <HowToCover run={run} typeName={d.typeName} coordinate={d.coordinate} />
       )}
     </div>
   );
@@ -315,8 +360,8 @@ export function OperationList({ items }: { items: Operation[] }) {
               <td className="px-3 py-1.5">
                 {o.testName ?? <span className="text-muted">unknown</span>}
               </td>
-              <td className={`px-3 py-1.5 ${o.status === 'valid' ? '' : 'text-danger'}`}>
-                {o.status}
+              <td className={`px-3 py-1.5 ${o.status === 'valid' ? 'text-muted' : 'text-danger'}`}>
+                {ANALYSIS_LABEL[o.status] ?? o.status}
               </td>
               <td className="px-3 py-1.5 tabular-nums">
                 {o.httpStatus}
@@ -349,7 +394,7 @@ export function OperationPage() {
       <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
         {[
           ['Тест', [o.testSuite, o.testName].filter(Boolean).join(' / ') || 'unknown'],
-          ['Анализ', o.status],
+          ['Анализ', ANALYSIS_LABEL[o.status] ?? o.status],
           ['HTTP-статус', `${o.httpStatus ?? '—'}${o.hasErrors ? ', в ответе есть errors' : ''}`],
           ['Задержка', o.latencyMs != null ? `${o.latencyMs} мс` : '—'],
           ['Транспорт', o.transport ?? '—'],
@@ -364,7 +409,11 @@ export function OperationPage() {
       {o.errors.length > 0 && (
         <div className="mt-4 rounded-md border border-danger/40 bg-surface p-3 text-danger">
           {o.errors.map((e, i) => (
-            <div key={i}>{e}</div>
+            <div key={i}>
+              {e.startsWith('Backend failed')
+                ? 'Сервер не выполнил запрос (HTTP 5xx или ошибки без данных), поэтому его поля не засчитаны в покрытие.'
+                : e}
+            </div>
           ))}
         </div>
       )}

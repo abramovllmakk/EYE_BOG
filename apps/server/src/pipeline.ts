@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
 import { LRUCache } from 'lru-cache';
 import type { Logger } from 'pino';
 import {
@@ -40,8 +41,10 @@ export interface ProxyJob {
   meta: RunMeta;
   test: TestRef;
   httpStatus: number | null;
-  /** Buffered JSON response (for the has_errors flag), if small enough. */
+  /** Buffered JSON response (for the has_errors flag), if small enough; possibly compressed. */
   responseBody?: Buffer | undefined;
+  /** `content-encoding` of `responseBody` (gzip, deflate, br) when the upstream compressed it. */
+  responseEncoding?: string | undefined;
   /** Pre-computed has_errors per batch index (WebSocket). */
   responseErrors?: (boolean | null)[] | undefined;
   latencyMs: number | null;
@@ -63,6 +66,9 @@ export interface PipelineHooks {
 }
 
 const APQ_PENDING_MAX = 1000;
+/** Log note for valid requests whose coverage was dropped because the backend failed them. */
+export const BACKEND_FAILED =
+  'Backend failed the request (HTTP 5xx or errors without data): coverage not counted';
 const SLICE_MS = 2;
 const WRITE_SLICE = 100;
 const APQ_PENDING_TTL_MS = 10 * 60_000;
@@ -199,18 +205,47 @@ export class AnalysisPipeline {
     return 'error' in outcome ? outcome : outcome.requests;
   }
 
-  private responseErrors(job: ProxyJob): (boolean | null)[] {
-    if (job.responseErrors) return job.responseErrors;
-    if (!job.responseBody) return [];
+  /**
+   * Per batch index: whether the response has `errors`, and whether the backend failed it
+   * (HTTP 5xx, or errors without data). Responses that were not buffered are never "failed"
+   * unless the HTTP status says so.
+   */
+  private responseOutcome(job: ProxyJob): { errors: (boolean | null)[]; failed: boolean[] } {
+    const serverError = job.httpStatus !== null && job.httpStatus >= 500;
+    if (job.responseErrors)
+      return { errors: job.responseErrors, failed: job.responseErrors.map(() => serverError) };
+    if (!job.responseBody) return { errors: [], failed: serverError ? [true] : [] };
     try {
-      const parsed: unknown = JSON.parse(job.responseBody.toString('utf8'));
-      const flag = (x: unknown) =>
+      const parsed: unknown = JSON.parse(this.decodeBody(job).toString('utf8'));
+      const items: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+      const errors = items.map((x) =>
         typeof x === 'object' && x !== null
           ? Array.isArray((x as { errors?: unknown }).errors)
-          : null;
-      return Array.isArray(parsed) ? parsed.map(flag) : [flag(parsed)];
+          : null,
+      );
+      const failed = items.map(
+        (x, i) => serverError || (errors[i] === true && (x as { data?: unknown }).data == null),
+      );
+      return { errors, failed };
     } catch {
-      return [];
+      return { errors: [], failed: serverError ? [true] : [] };
+    }
+  }
+
+  /** Decompresses a buffered response; output is capped so a zip bomb cannot exhaust memory. */
+  private decodeBody(job: ProxyJob): Buffer {
+    const body = job.responseBody!;
+    const maxOutputLength = this.config.queue.responseInspectLimitBytes * 20;
+    switch (job.responseEncoding) {
+      case 'gzip':
+      case 'x-gzip':
+        return gunzipSync(body, { maxOutputLength });
+      case 'deflate':
+        return inflateSync(body, { maxOutputLength });
+      case 'br':
+        return brotliDecompressSync(body, { maxOutputLength });
+      default:
+        return body;
     }
   }
 
@@ -261,7 +296,7 @@ export class AnalysisPipeline {
   private async process(job: ProxyJob): Promise<void> {
     const runId = await this.runs.resolve(job.target, job.meta);
     const parsed = this.parseRequests(job);
-    const errs = this.responseErrors(job);
+    const { errors: errs, failed } = this.responseOutcome(job);
     if ('error' in parsed) {
       const entry = this.baseLog(job, runId, null, errs[0] ?? null);
       entry.errors = [parsed.error];
@@ -275,7 +310,7 @@ export class AnalysisPipeline {
       const entry = this.baseLog(job, runId, batched ? i : null, errs[i] ?? null);
       entry.operationName = req.operationName ?? null;
       entry.variables = redactVariables(req.variables, this.config.logging.variables);
-      await this.analyzeOne(job.target, runId, req, job.test, entry);
+      await this.analyzeOne(job.target, runId, req, job.test, entry, failed[i] ?? false);
     }
   }
 
@@ -285,6 +320,7 @@ export class AnalysisPipeline {
     req: GraphQLRequest,
     test: TestRef,
     entry: NewOperationLog & { id?: number },
+    failed = false,
   ): Promise<void> {
     const apqHash = persistedQueryHash(req);
     let query = req.query ?? null;
@@ -345,7 +381,7 @@ export class AnalysisPipeline {
       operationName: req.operationName,
       variables: req.variables,
     });
-    this.applyResult(runId, test, entry, result);
+    this.applyResult(runId, test, entry, result, failed);
     this.logs.push(entry);
 
     if (this.pending.length) await this.resolvePending([queryHash!, ...(apqHash ? [apqHash] : [])]);
@@ -356,12 +392,36 @@ export class AnalysisPipeline {
     test: TestRef,
     entry: NewOperationLog,
     result: AnalysisResult,
+    failed = false,
   ): void {
     entry.status = result.status;
     entry.errors = result.errors;
     entry.operationName = result.operationName ?? entry.operationName;
     entry.operationType = result.operationType;
     entry.fields = result.fields.map((f) => f.coordinate);
+    if (failed && result.status === 'valid' && !this.config.coverage.countFailedResponses) {
+      // The backend did not resolve the selection: the request is logged, its coverage is not.
+      entry.fields = [];
+      entry.errors = [...entry.errors, BACKEND_FAILED];
+      this.accumulator(runId).add(
+        {
+          ...result,
+          rootFields: [],
+          fields: [],
+          arguments: [],
+          enumValues: [],
+          inputFields: [],
+          unionMembers: [],
+          edges: [],
+          types: [],
+          depthHistogram: [],
+          maxDepth: 0,
+        },
+        test,
+      );
+      this.metrics.analyzed.inc({ status: 'backend_failed' });
+      return;
+    }
     this.accumulator(runId).add(result, test);
     this.metrics.analyzed.inc({ status: result.status });
   }

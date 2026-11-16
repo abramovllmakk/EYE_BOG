@@ -19,6 +19,8 @@ export interface CreateRunInput extends Omit<RunMeta, 'runId'> {
   id?: string | undefined;
   target?: string | undefined;
   labels?: Record<string, string> | undefined;
+  /** Start time for importing past runs (epoch ms); defaults to now. */
+  startedAt?: number | undefined;
 }
 
 const RUN_ID = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -46,6 +48,8 @@ export class RunManager {
 
   private async insert(input: CreateRunInput & { auto: boolean; target: string }): Promise<RunRow> {
     const now = Date.now();
+    const startedAt =
+      input.startedAt !== undefined && input.startedAt < now ? input.startedAt : now;
     const run = await this.storage.createRun({
       id: input.id ?? randomUUID(),
       target: input.target,
@@ -58,7 +62,7 @@ export class RunManager {
       team: input.team ?? null,
       testSuite: input.testSuite ?? null,
       labels: input.labels ?? {},
-      startedAt: now,
+      startedAt,
       lastActivityAt: now,
     });
     this.cache.set(run.id, run);

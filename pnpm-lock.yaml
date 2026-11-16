@@ -120,6 +120,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@fontsource-variable/golos-text':
+        specifier: 5.2.8
+        version: 5.2.8
+      '@fontsource-variable/jetbrains-mono':
+        specifier: 5.2.8
+        version: 5.2.8
       '@tanstack/react-query':
         specifier: 5.107.1
         version: 5.107.1(@types/react@19.3.0)(react@19.3.1)
@@ -782,6 +788,12 @@ packages:
 
   '@fastify/swagger@9.9.4':
     resolution: {integrity: sha512-kOqd32l4eYuDSfPQs0uppTj+gqdOrfPs5kNljQy3ZL2S7EVn41GvyAYA9wXxY8rS+/88HHR8YjYhGOpvtqrPCw==}
+
+  '@fontsource-variable/golos-text@5.2.8':
+    resolution: {integrity: sha512-cLT8Gu9tSQTOjfPY+qnrqQwafUUJkZu0s9hTbQbtaeknTyV36c/FQc5hvTRvgeUOT4cp/Xf0dkHdZatwj3g2Nw==}
+
+  '@fontsource-variable/jetbrains-mono@5.2.8':
+    resolution: {integrity: sha512-WBA9elru6Jdp5df2mES55wuOO0WIrn3kpXnI4+W2ek5u3ZgLS9XS4gmIlcQhiZOWEKl95meYdvK7xI+ETLCq/Q==}
 
   '@graphql-hive/logger@1.1.1':
     resolution: {integrity: sha512-fVUlEQCpnJnR/KJeEDHZbEDwEq4fMNTjKvicauCFMfxPLlcpIWdrscXpI/azwQkpsARyWPV0RnwdgjZIrFBmwQ==}
@@ -3054,6 +3066,10 @@ snapshots:
       yaml: 2.9.1
     transitivePeerDependencies:
       - supports-color
+
+  '@fontsource-variable/golos-text@5.2.8': {}
+
+  '@fontsource-variable/jetbrains-mono@5.2.8': {}
 
   '@graphql-hive/logger@1.1.1(pino@10.4.0)':
     optionalDependencies:

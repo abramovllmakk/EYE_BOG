@@ -19,9 +19,40 @@ export function StatusDot({ status, className = '' }: { status: Status; classNam
   );
 }
 
-/** Horizontal coverage bar; the fill colour follows the coverage status thresholds. */
-export function Bar({ value, className = '' }: { value: number; className?: string }) {
-  const color = value >= 100 ? 'bg-covered' : value > 0 ? 'bg-partial' : 'bg-uncovered';
+/** Colour of an aggregate coverage level: green from 80%, amber from 50%, red below. */
+export function levelTone(value: number): 'covered' | 'partial' | 'danger' | 'uncovered' {
+  if (value >= 80) return 'covered';
+  if (value >= 50) return 'partial';
+  return value > 0 ? 'danger' : 'uncovered';
+}
+const levelBg = {
+  covered: 'bg-covered',
+  partial: 'bg-partial',
+  danger: 'bg-danger',
+  uncovered: 'bg-uncovered',
+};
+
+/**
+ * Horizontal coverage bar. `level` (default) colours aggregate percentages by threshold;
+ * `status` follows the type status (100% covered, otherwise partial) where that is what it shows.
+ */
+export function Bar({
+  value,
+  className = '',
+  mode = 'level',
+}: {
+  value: number;
+  className?: string;
+  mode?: 'level' | 'status';
+}) {
+  const color =
+    mode === 'status'
+      ? value >= 100
+        ? 'bg-covered'
+        : value > 0
+          ? 'bg-partial'
+          : 'bg-uncovered'
+      : levelBg[levelTone(value)];
   return (
     <div
       className={`h-1.5 w-full overflow-hidden rounded-full bg-uncovered-soft ${className}`}
@@ -31,7 +62,7 @@ export function Bar({ value, className = '' }: { value: number; className?: stri
       aria-valuemax={100}
     >
       <div
-        className={`h-full ${color}`}
+        className={`h-full rounded-full ${color}`}
         style={{ width: `${Math.max(value, value > 0 ? 2 : 0)}%` }}
       />
     </div>
@@ -190,5 +221,9 @@ export function Legend() {
 }
 
 export const Mono = ({ children, className = '' }: { children: ReactNode; className?: string }) => (
-  <span className={`font-mono text-[13px] ${className}`}>{children}</span>
+  <span
+    className={`font-mono ${/\btext-(xs|sm|base|lg|xl|2xl|\[)/.test(className) ? '' : 'text-[13px]'} ${className}`}
+  >
+    {children}
+  </span>
 );

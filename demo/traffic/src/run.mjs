@@ -3,9 +3,13 @@
  * Sends the demo test-suite through the proxy.
  *   PROXY_URL   proxy GraphQL endpoint (default http://localhost:4000/graphql)
  *   RUN_ID      optional X-Coverage-Run-Id (otherwise the proxy picks the active/auto run)
- *   BRANCH, ENVIRONMENT, BUILD  optional run metadata headers
+ *   BRANCH, ENVIRONMENT, BUILD, TEAM  optional run metadata headers
+ *   ONLY        optional comma-separated test names to send (default: all)
  */
-import { tests } from './tests.mjs';
+import { tests as allTests } from './tests.mjs';
+
+const only = process.env.ONLY ? new Set(process.env.ONLY.split(',').map((s) => s.trim())) : null;
+const tests = only ? allTests.filter((t) => only.has(t.name)) : allTests;
 
 const url = process.env.PROXY_URL ?? 'http://localhost:4000/graphql';
 const meta = {
@@ -13,6 +17,7 @@ const meta = {
   ...(process.env.BRANCH ? { 'x-coverage-branch': process.env.BRANCH } : {}),
   ...(process.env.ENVIRONMENT ? { 'x-coverage-env': process.env.ENVIRONMENT } : {}),
   ...(process.env.BUILD ? { 'x-coverage-build': process.env.BUILD } : {}),
+  ...(process.env.TEAM ? { 'x-coverage-team': process.env.TEAM } : {}),
 };
 
 const headersFor = (t) => ({

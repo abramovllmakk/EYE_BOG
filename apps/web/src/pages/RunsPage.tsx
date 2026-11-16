@@ -1,16 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { Empty, ErrorBox, Loading, Select, TextInput, Bar } from '../components/ui';
+import { InsightsPanel } from '../components/InsightsPanel';
+import { Empty, ErrorBox, Loading, Select, TextInput, Bar, levelTone } from '../components/ui';
 import { api, qs, type Filters, type Run, type Target, type TimelinePoint } from '../lib/api';
-import { dateTime, pct } from '../lib/format';
+import { dateTime, pct, plural, runLabel, shortId } from '../lib/format';
 import { useParam } from '../lib/url';
+import type { GapPlan } from '../lib/api';
 
 function Sparkline({ values }: { values: number[] }) {
   if (values.length < 2) return <span className="text-xs text-muted">мало точек</span>;
   const w = 120;
   const h = 28;
   const pts = values
-    .map((v, i) => `${(i / (values.length - 1)) * w},${h - (v / 100) * (h - 4) - 2}`)
+    .map((v, i) => `${3 + (i / (values.length - 1)) * (w - 6)},${h - (v / 100) * (h - 6) - 3}`)
     .join(' ');
   return (
     <svg
@@ -21,8 +23,8 @@ function Sparkline({ values }: { values: number[] }) {
     >
       <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="1.5" />
       <circle
-        cx={w}
-        cy={h - (values[values.length - 1]! / 100) * (h - 4) - 2}
+        cx={w - 3}
+        cy={h - (values[values.length - 1]! / 100) * (h - 6) - 3}
         r="2.5"
         fill="var(--accent)"
       />
@@ -41,7 +43,10 @@ function Onboarding() {
           `${proxy}/graphql`}
       </pre>
       <p className="mt-3">
-        Необязательно: заголовки X-Test-Name и X-Test-Suite подпишут запросы именами тестов.
+        Необязательно: заголовки X-Test-Name и X-Test-Suite подпишут запросы именами тестов.{' '}
+        <Link to="/connect" className="text-accent hover:underline">
+          Примеры для Playwright, Jest, Python и CI
+        </Link>
       </p>
       {targets.data?.some((t) => t.error) && (
         <div className="mt-3 rounded-md border border-danger/40 p-3 text-left">
@@ -56,6 +61,105 @@ function Onboarding() {
         </div>
       )}
     </Empty>
+  );
+}
+
+function Ring({ value }: { value: number }) {
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const tone = levelTone(value);
+  const color = `var(--${tone})`;
+  return (
+    <svg
+      viewBox="0 0 128 128"
+      className="size-32 shrink-0"
+      role="img"
+      aria-label={`Покрыто полей: ${pct(value)}`}
+    >
+      <circle cx="64" cy="64" r={r} fill="none" stroke="var(--uncovered-soft)" strokeWidth="12" />
+      <circle
+        cx="64"
+        cy="64"
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth="12"
+        strokeLinecap="round"
+        strokeDasharray={`${(Math.min(value, 100) / 100) * c} ${c}`}
+        transform="rotate(-90 64 64)"
+      />
+      <text x="64" y="62" textAnchor="middle" fontSize="24" fontWeight="600" fill="var(--ink)">
+        {pct(value)}
+      </text>
+      <text x="64" y="82" textAnchor="middle" fontSize="11" fill="var(--muted)">
+        полей покрыто
+      </text>
+    </svg>
+  );
+}
+
+/** Latest run at a glance: how much of the schema the tests touch and what to do next. */
+function Overview({ run }: { run: Run }) {
+  const id = encodeURIComponent(run.id);
+  const plan = useQuery({
+    queryKey: ['gaps', run.id],
+    queryFn: () => api<GapPlan>(`/api/runs/${id}/gaps`),
+  });
+  const s = run.summary;
+  if (!s) return null;
+  const p = plan.data;
+  const metrics: [string, number][] = [
+    ['Операции', s.operations],
+    ['Типы', s.types],
+    ['Аргументы', s.arguments],
+    ['Связи', s.edges],
+  ];
+  return (
+    <section className="mt-5 flex flex-col gap-6 rounded-lg border border-line bg-surface p-5 lg:flex-row lg:items-center">
+      <Ring value={s.fields} />
+      <div className="min-w-0 flex-1">
+        <div className="text-xs text-muted">
+          Последний прогон{run.status === 'running' ? ', идёт сейчас' : ''}
+        </div>
+        <div className="mt-0.5 text-lg font-semibold">
+          {runLabel(run)} <span className="font-normal text-muted">{dateTime(run.startedAt)}</span>
+        </div>
+        <dl className="mt-3 grid max-w-xl grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
+          {metrics.map(([k, v]) => (
+            <div key={k}>
+              <dt className="text-xs text-muted">{k}</dt>
+              <dd className="tabular-nums">{pct(v)}</dd>
+              <Bar value={v} className="mt-1" />
+            </div>
+          ))}
+        </dl>
+      </div>
+      <div className="flex flex-col gap-2 lg:w-72">
+        {p && p.suggestions.length > 0 && (
+          <p className="text-muted">
+            <b className="text-ink">{p.suggestions.length}</b>{' '}
+            {plural(p.suggestions.length, 'запрос', 'запроса', 'запросов')} из плана поднимут
+            покрытие полей до <b className="text-covered">{pct(p.projected)}</b>.
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to={`/graph?run=${id}`}
+            className="flex h-9 items-center rounded-md bg-accent px-3 font-medium text-on-accent"
+          >
+            Открыть карту схемы
+          </Link>
+          {p && p.suggestions.length > 0 && (
+            <Link
+              to={`/plan?run=${id}`}
+              className="flex h-9 items-center rounded-md border border-line px-3 hover:bg-surface-2"
+            >
+              План покрытия
+            </Link>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -90,8 +194,14 @@ export function RunsPage() {
   const o = options.data;
   return (
     <div className="mx-auto max-w-7xl p-6">
-      <div className="flex flex-wrap items-end gap-3">
-        <h1 className="mr-auto text-xl font-semibold">Прогоны тестов</h1>
+      <h1 className="text-xl font-semibold">Прогоны тестов</h1>
+      {runs.data?.items[0] && !Object.values(filters).some(Boolean) && (
+        <>
+          <Overview run={runs.data.items[0]} />
+          <InsightsPanel run={runs.data.items[0].id} />
+        </>
+      )}
+      <div className="mt-5 flex flex-wrap items-end gap-3">
         <Select
           label="Окружение"
           value={environment}
@@ -117,7 +227,7 @@ export function RunsPage() {
         />
         <TextInput label="С даты" type="date" value={from} onChange={setFrom} />
         <TextInput label="По дату" type="date" value={to} onChange={setTo} />
-        <div className="flex flex-col gap-1 text-xs text-muted">
+        <div className="ml-auto flex flex-col gap-1 text-xs text-muted">
           Тренд полей
           <Sparkline values={(trend.data ?? []).map((p) => p.summary.fields)} />
         </div>
@@ -154,7 +264,7 @@ export function RunsPage() {
                       to={`/graph?run=${encodeURIComponent(r.id)}`}
                       className="font-medium hover:underline"
                     >
-                      {r.branch ?? r.id.slice(0, 8)}
+                      {r.branch ?? shortId(r.id)}
                     </Link>
                     <div className="text-xs text-muted">
                       {[
@@ -165,7 +275,7 @@ export function RunsPage() {
                         r.status === 'running' ? 'идёт' : null,
                       ]
                         .filter(Boolean)
-                        .join(', ') || r.id}
+                        .join(', ') || (r.branch ? r.id : '')}
                     </div>
                   </td>
                   <td className="px-3 py-2 tabular-nums">{dateTime(r.startedAt)}</td>
